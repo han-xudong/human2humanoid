@@ -143,6 +143,9 @@ class Ballbot_Batch:
                 joint_names.append(joint_name)
                 if not joint.attrib.get("range") is None: 
                     joints_range.append(np.fromstring(joint.attrib.get("range"), dtype=float, sep=" "))
+                elif joint.attrib.get("name") != "floating_base_joint" and joint.attrib.get("type") == "hinge":
+                    joints_range.append(np.array([-np.pi, np.pi], dtype=float))
+                    
             
             for next_node in xml_node.findall("body"):
                 node_index = _add_xml_node(next_node, curr_index, node_index)
