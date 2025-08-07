@@ -114,6 +114,8 @@ if __name__ == "__main__":
     pbar = tqdm(key_name_to_pkls.keys())
     for data_key in pbar:
         amass_data = load_amass_data(key_name_to_pkls[data_key])
+        if not amass_data:
+            continue
         skip = int(amass_data['fps']//30)
         trans = torch.from_numpy(amass_data['trans'][::skip]).float().to(device)
         N = trans.shape[0]
@@ -168,10 +170,10 @@ if __name__ == "__main__":
                 "fps": 30
                 }
         
-        print(f"dumping {data_key} for testing, remove the line if you want to process all data")
-        import ipdb; ipdb.set_trace()
-        joblib.dump(data_dump, "data/h1/test.pkl")
+    #     print(f"dumping {data_key} for testing, remove the line if you want to process all data")
+    #     import ipdb; ipdb.set_trace()
+    #     joblib.dump(data_dump, "data/h1/test.pkl")
     
         
-    import ipdb; ipdb.set_trace()
+    # import ipdb; ipdb.set_trace()
     joblib.dump(data_dump, "data/h1/amass_all.pkl")

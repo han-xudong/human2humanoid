@@ -45,6 +45,7 @@ class Humanoid_Batch:
         self.extend_head = extend_head
         if extend_hand:
             self.model_names = mjcf_data['node_names'] + ["left_hand_link", "right_hand_link"]
+            self.joint_names = mjcf_data['joint_names']
             self._parents = torch.cat((mjcf_data['parent_indices'], torch.tensor([15, 19]))).to(device) # Adding the hands joints
             arm_length = 0.3
             self._offsets = torch.cat((mjcf_data['local_translation'], torch.tensor([[arm_length, 0, 0], [arm_length, 0, 0]])), dim = 0)[None, ].to(device)
@@ -53,12 +54,14 @@ class Humanoid_Batch:
         else:
             self._parents = mjcf_data['parent_indices']
             self.model_names = mjcf_data['node_names']
+            self.joint_names = mjcf_data['joint_names']
             self._offsets = mjcf_data['local_translation'][None, ].to(device)
             self._local_rotation = mjcf_data['local_rotation'][None, ].to(device)
             
         if extend_head:
             self._remove_idx = 3
             self.model_names = self.model_names + ["head_link"]
+            self.joint_names = self.joint_names
             self._parents = torch.cat((self._parents, torch.tensor([0]).to(device))).to(device) # Adding the hands joints
             head_length = 0.75
             self._offsets = torch.cat((self._offsets, torch.tensor([[[0, 0, head_length]]]).to(device)), dim = 1).to(device)
@@ -67,6 +70,17 @@ class Humanoid_Batch:
         
         self.joints_range = mjcf_data['joints_range'].to(device)
         self._local_rotation_mat = tRot.quaternion_to_matrix(self._local_rotation).float() # w, x, y ,z
+        
+        print("Model names:", self.model_names)
+        print("Length of model names:", len(self.model_names))
+        print("Joint names:", self.joint_names)
+        print("Length of joint names:", len(self.joint_names))
+        print("Parents:", self._parents)
+        print("Length of parents:", len(self._parents))
+        print("Offsets:", self._offsets)
+        print("Shape of offsets:", self._offsets.shape)
+        print("Joints range:", self.joints_range)
+        print("Shape of joints range:", self.joints_range.shape)
         
     def from_mjcf(self, path):
         # function from Poselib: 
@@ -86,6 +100,7 @@ class Humanoid_Batch:
         parent_indices = []
         local_translation = []
         local_rotation = []
+        joint_names = []
         joints_range = []
 
         # recursively adding all nodes into the skel_tree
@@ -102,6 +117,8 @@ class Humanoid_Batch:
             node_index += 1
             all_joints = xml_node.findall("joint")
             for joint in all_joints:
+                joint_name = joint.attrib.get("name")
+                joint_names.append(joint_name)
                 if not joint.attrib.get("range") is None: 
                     joints_range.append(np.fromstring(joint.attrib.get("range"), dtype=float, sep=" "))
             
@@ -112,6 +129,7 @@ class Humanoid_Batch:
         _add_xml_node(xml_body_root, -1, 0)
         return {
             "node_names": node_names,
+            "joint_names": joint_names,
             "parent_indices": torch.from_numpy(np.array(parent_indices, dtype=np.int32)),
             "local_translation": torch.from_numpy(np.array(local_translation, dtype=np.float32)),
             "local_rotation": torch.from_numpy(np.array(local_rotation, dtype=np.float32)),
@@ -235,3 +253,16 @@ class Humanoid_Batch:
         if guassian_filter:
             angular_velocity = torch.from_numpy(filters.gaussian_filter1d(angular_velocity.numpy(), 2, axis=-3, mode="nearest"),)
         return angular_velocity  
+
+if __name__ == "__main__":
+    humanoid = Humanoid_Batch()
+    print("Humanoid model names:", humanoid.model_names)
+    print("Length of model names:", len(humanoid.model_names))
+    print("Humanoid joint names:", humanoid.joint_names)
+    print("Length of joint names:", len(humanoid.joint_names))
+    print("Humanoid parents:", humanoid._parents)
+    print("Length of parents:", len(humanoid._parents))
+    print("Humanoid offsets:", humanoid._offsets)
+    print("Shape of offsets:", humanoid._offsets.shape)
+    print("Humanoid joints range:", humanoid.joints_range)
+    print("Shape of joints range:", humanoid.joints_range.shape)

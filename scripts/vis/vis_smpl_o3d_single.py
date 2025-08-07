@@ -14,14 +14,14 @@ import joblib
 import numpy as np
 import torch
 
-from uhc.smpllib.smpl_parser import (
+from smpl_sim.smpllib.smpl_parser import (
     SMPL_Parser,
     SMPLH_Parser,
     SMPLX_Parser,
 )
 import random
 
-from uhc.smpllib.smpl_mujoco import SMPL_BONE_ORDER_NAMES as joint_names
+from smpl_sim.smpllib.smpl_mujoco_new import SMPL_BONE_ORDER_NAMES as joint_names
 from smpl_sim.poselib.skeleton.skeleton3d import SkeletonTree, SkeletonMotion, SkeletonState
 from scipy.spatial.transform import Rotation as sRot
 import matplotlib.pyplot as plt
@@ -96,7 +96,8 @@ smpl_parser_f = SMPL_Parser(model_path=data_dir, gender="female")
 # pkl_dir = "output/renderings/smpl_ego_long_8-2023-01-20-11:28:00.pkl"
 # pkl_dir = "output/renderings/smpl_im_comp_8-2023-02-05-15:36:14.pkl"
 # pkl_dir = "output/renderings/smpl_im_comp_pnn_1_1_demo-2023-03-12-18:57:01.pkl"
-pkl_dir = "output/renderings/smpl_im_comp_pnn_1_1_demo-2023-03-14-14:40:46.pkl"
+# pkl_dir = "output/renderings/smpl_im_comp_pnn_1_1_demo-2023-03-14-14:40:46.pkl"
+pkl_dir = "legged_gym/resources/motions/h1/stable_punch.pkl"
 Name = pkl_dir.split("/")[-1].split(".")[0]
 pkl_data = joblib.load(pkl_dir)
 mujoco_2_smpl = [mujoco_joint_names.index(q) for q in joint_names if q in mujoco_joint_names]

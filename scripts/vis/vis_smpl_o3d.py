@@ -14,14 +14,14 @@ import joblib
 import numpy as np
 import torch
 
-from uhc.smpllib.smpl_parser import (
+from smpl_sim.smpllib.smpl_parser import (
     SMPL_Parser,
     SMPLH_Parser,
     SMPLX_Parser,
 )
 import random
 
-from uhc.smpllib.smpl_mujoco import SMPL_BONE_ORDER_NAMES as joint_names
+from smpl_sim.smpllib.smpl_mujoco_new import SMPL_BONE_ORDER_NAMES as joint_names
 from smpl_sim.poselib.skeleton.skeleton3d import SkeletonTree, SkeletonMotion, SkeletonState
 from scipy.spatial.transform import Rotation as sRot
 import matplotlib.pyplot as plt
@@ -80,8 +80,9 @@ smpl_parser_m = SMPL_Parser(model_path=data_dir, gender="male")
 smpl_parser_f = SMPL_Parser(model_path=data_dir, gender="female")
 
 # pkl_dir = "output/renderings/smpl_ego_long_8-2023-01-20-11:28:00.pkl"
-pkl_dir = "output/renderings/smpl_ego_7-2023-07-13-16:15:23.pkl"
+# pkl_dir = "output/renderings/smpl_ego_7-2023-07-13-16:15:23.pkl"
 # pkl_dir = "output/renderings/smpl_im_comp_pnn_1_1_demo-2023-03-13-11:36:14.pkl"
+pkl_dir = "legged_gym/resources/motions/h1/stable_punch.pkl"
 Name = pkl_dir.split("/")[-1].split(".")[0]
 pkl_data = joblib.load(pkl_dir)
 mujoco_joint_names = ['Pelvis', 'L_Hip', 'L_Knee', 'L_Ankle', 'L_Toe', 'R_Hip', 'R_Knee', 'R_Ankle', 'R_Toe', 'Torso', 'Spine', 'Chest', 'Neck', 'Head', 'L_Thorax', 'L_Shoulder', 'L_Elbow', 'L_Wrist', 'L_Hand', 'R_Thorax', 'R_Shoulder', 'R_Elbow', 'R_Wrist', 'R_Hand']
