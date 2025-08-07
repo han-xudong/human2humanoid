@@ -7,4 +7,4 @@ from .base.legged_robot import LeggedRobot
 
 from legged_gym.utils.task_registry import task_registry
 
-task_registry.register( "h1:teleop", LeggedRobot, H1TeleopCfg(), H1TeleopCfgPPO())
+task_registry.register( "h1-teleop", LeggedRobot, H1TeleopCfg(), H1TeleopCfgPPO())

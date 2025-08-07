@@ -37,7 +37,7 @@ algorithm:
 runner:
     run_name : ''
     policy_class_name : 'ActorCriticPULSE'
-    experiment_name : 'h1:teleop'
+    experiment_name : 'h1-teleop'
     max_iterations : 10000000
     has_eval : False
     eval_interval: 2500

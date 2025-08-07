@@ -43,3 +43,4 @@ onnxruntime==1.13.1
 onnx==1.13.1
 hydra-core
 # pytorch3d
+rl_games

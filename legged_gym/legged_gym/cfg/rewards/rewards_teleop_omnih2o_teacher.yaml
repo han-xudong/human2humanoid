@@ -37,7 +37,7 @@ scales:
   # stumble : 0
   # feet_air_time_teleop : 0
   # slippage : -0
-  # feet_ori : 0 = python legged_gym/scripts/train_hydra.py --config-name=config_teleop task=h1:teleop run_name=3pointvr_upperrewardonly_sigma_curriculum0.01-1penalty_curriculum0.25-1 env.num_observations=93 env.num_privileged_obs=170 motion.teleop_obs_version=v-teleop-extend-vr-max motion.teleop_selected_keypoints_names=[] motion.extend_head=True num_envs=4096 asset.zero_out_far=False asset.termination_scales.max_ref_motion_distance=10.0 sim_device=cuda:0 rewards.sigma_curriculum=True rewards.penalty_curriculum=Truereward
+  # feet_ori : 0 = python legged_gym/scripts/train_hydra.py --config-name=config_teleop task=h1-teleop run_name=3pointvr_upperrewardonly_sigma_curriculum0.01-1penalty_curriculum0.25-1 env.num_observations=93 env.num_privileged_obs=170 motion.teleop_obs_version=v-teleop-extend-vr-max motion.teleop_selected_keypoints_names=[] motion.extend_head=True num_envs=4096 asset.zero_out_far=False asset.termination_scales.max_ref_motion_distance=10.0 sim_device=cuda:0 rewards.sigma_curriculum=True rewards.penalty_curriculum=Truereward
   # orientation : -0.0
 
 

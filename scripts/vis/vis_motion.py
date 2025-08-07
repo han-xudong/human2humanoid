@@ -52,7 +52,7 @@ asset_descriptors = [
 ]
 sk_tree = SkeletonTree.from_mjcf(h1_xml)
 
-motion_file = "data/h1/shape_optimized_v1.pkl"
+motion_file = "legged_gym/resources/motions/h1/stable_punch.pkl"
 if os.path.exists(motion_file):
     print(f"loading {motion_file}")
 else:
@@ -174,7 +174,7 @@ gym.prepare_sim(sim)
 device = (torch.device("cuda", index=0) if torch.cuda.is_available() else torch.device("cpu"))
 
 motion_lib = MotionLibH1(motion_file=motion_file, device=device, masterfoot_conifg=None, fix_height=False, multi_thread=False, mjcf_file=h1_xml)
-num_motions = 1
+num_motions = 5
 curr_start = 0
 motion_lib.load_motions(skeleton_trees=[sk_tree] * num_motions, gender_betas=[torch.zeros(17)] * num_motions, limb_weights=[np.zeros(10)] * num_motions, random_sample=False)
 motion_keys = motion_lib.curr_motion_keys

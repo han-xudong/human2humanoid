@@ -171,6 +171,9 @@ for iteration in range(1000):
     loss.backward()
     optimizer_shape.step()
 
+print(f"shape_new = {shape_new.detach().cpu().numpy()}")
+print(f"scale = {scale.detach().cpu().numpy()}")
+
 os.makedirs("data/h1", exist_ok=True)
 joblib.dump(
     (shape_new.detach(), scale), "data/h1/shape_optimized_v1.pkl"

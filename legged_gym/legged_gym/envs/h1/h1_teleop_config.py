@@ -446,7 +446,7 @@ class H1TeleopCfgPPO( LeggedRobotCfgPPO ):
         action_smoothness_coef = 0.000 # 0.003
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''
-        experiment_name = 'h1:teleop'
+        experiment_name = 'h1-teleop'
         max_iterations = 10000000
         
         
