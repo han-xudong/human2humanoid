@@ -6,7 +6,7 @@ import pybullet_data as pd
 import pybullet_utils.urdfEditor as ed
 import argparse
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('--mjcf', help='MuJoCo xml file to be converted to URDF', default='mjcf/humanoid.xml')
+parser.add_argument('--mjcf', help='MuJoCo xml file to be converted to URDF', default='resources/robots/ballbot/ballbot.xml')
 args = parser.parse_args()
 
 p = bc.BulletClient()

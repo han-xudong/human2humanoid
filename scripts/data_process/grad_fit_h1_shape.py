@@ -3,6 +3,10 @@ import os
 import sys
 import pdb
 import os.path as osp
+import copy
+
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 
 sys.path.append(os.getcwd())
 
@@ -37,37 +41,10 @@ from smpl_sim.smpllib.smpl_joint_names import (
 )
 from phc.utils.torch_h1_humanoid_batch import Humanoid_Batch, H1_ROTATION_AXIS
 
-h1_joint_names = [
-    "pelvis",
-    "left_hip_yaw_link",
-    "left_hip_roll_link",
-    "left_hip_pitch_link",
-    "left_knee_link",
-    "left_ankle_link",
-    "right_hip_yaw_link",
-    "right_hip_roll_link",
-    "right_hip_pitch_link",
-    "right_knee_link",
-    "right_ankle_link",
-    "torso_link",
-    "left_shoulder_pitch_link",
-    "left_shoulder_roll_link",
-    "left_shoulder_yaw_link",
-    "left_elbow_link",
-    "right_shoulder_pitch_link",
-    "right_shoulder_roll_link",
-    "right_shoulder_yaw_link",
-    "right_elbow_link",
-]
-
 
 h1_fk = Humanoid_Batch(extend_head=True)  # load forward kinematics model
 #### Define corresonpdances between h1 and smpl joints
-h1_joint_names_augment = h1_joint_names + [
-    "left_hand_link",
-    "right_hand_link",
-    "head_link",
-]
+h1_joint_names_augment = copy.deepcopy(h1_fk.model_names)
 h1_joint_pick = [
     "pelvis",
     "left_hip_yaw_link",
@@ -153,6 +130,54 @@ shape_new = Variable(torch.zeros([1, 10]).to(device), requires_grad=True)
 scale = Variable(torch.ones([1]).to(device), requires_grad=True)
 optimizer_shape = torch.optim.Adam([shape_new, scale], lr=0.1)
 
+h1_xyz = fk_return.global_translation_extend[:, :, h1_joint_pick_idx].detach().cpu().numpy()
+smpl_xyz = joints[:, smpl_joint_pick_idx].detach().cpu().numpy()
+
+n_h1 = min(len(h1_joint_pick), h1_xyz.shape[2])
+n_smpl = min(len(smpl_joint_pick), smpl_xyz.shape[1])
+smpl_skeleton_edges = [
+    (0, 1),   # Pelvis -> L_Hip
+    (1, 2),   # L_Hip -> L_Knee
+    (2, 3),   # L_Knee -> L_Ankle
+    (0, 4),   # Pelvis -> R_Hip
+    (4, 5),   # R_Hip -> R_Knee
+    (5, 6),   # R_Knee -> R_Ankle
+    (0, 7),   # Pelvis -> L_Shoulder
+    (7, 8),   # L_Shoulder -> L_Elbow
+    (8, 9),   # L_Elbow -> L_Hand
+    (0, 10),  # Pelvis -> R_Shoulder
+    (10, 11), # R_Shoulder -> R_Elbow
+    (11, 12), # R_Elbow -> R_Hand
+    (0, 13),  # Pelvis -> Head
+]
+h1_skeleton_edges = smpl_skeleton_edges
+
+plt.ion()
+fig = plt.figure(figsize=(10, 10))
+ax = fig.add_subplot(111, projection='3d')
+h1_xyz = np.asarray(h1_xyz).reshape(-1, 3)
+smpl_xyz = np.asarray(smpl_xyz).reshape(-1, 3)
+ax.scatter(h1_xyz[:,0], h1_xyz[:,1], h1_xyz[:,2], c='r', label='h1')
+ax.scatter(smpl_xyz[:,0], smpl_xyz[:,1], smpl_xyz[:,2], c='b', label='SMPL')
+for (i, j) in h1_skeleton_edges:
+    ax.plot([h1_xyz[i,0], h1_xyz[j,0]],
+            [h1_xyz[i,1], h1_xyz[j,1]],
+            [h1_xyz[i,2], h1_xyz[j,2]], c='r')
+for (i, j) in smpl_skeleton_edges:
+    ax.plot([smpl_xyz[i,0], smpl_xyz[j,0]],
+            [smpl_xyz[i,1], smpl_xyz[j,1]],
+            [smpl_xyz[i,2], smpl_xyz[j,2]], c='b')
+for i in range(n_h1):
+    ax.text(h1_xyz[i,0], h1_xyz[i,1], h1_xyz[i,2], h1_joint_pick[i], color='r')
+for i in range(n_smpl):
+    ax.text(smpl_xyz[i,0], smpl_xyz[i,1], smpl_xyz[i,2], smpl_joint_pick[i], color='b')
+ax.set_xlabel('X')
+ax.set_ylabel('Y')
+ax.set_zlabel('Z')
+ax.set_title('H1 and SMPL Joint Positions')
+ax.legend()
+plt.draw()
+plt.pause(0.1)
 
 for iteration in range(1000):
     verts, joints = smpl_parser_n.get_joints_verts(pose_aa_stand, shape_new, trans[0:1])
@@ -166,6 +191,33 @@ for iteration in range(1000):
     loss = loss_g
     if iteration % 100 == 0:
         print(iteration, loss.item() * 1000)
+        
+        ax.cla()
+        h1_xyz = fk_return.global_translation_extend[:, :, h1_joint_pick_idx].detach().cpu().numpy()
+        smpl_xyz = joints[:, smpl_joint_pick_idx].detach().cpu().numpy()
+        h1_xyz = np.asarray(h1_xyz).reshape(-1, 3)
+        smpl_xyz = np.asarray(smpl_xyz).reshape(-1, 3)
+        ax.scatter(h1_xyz[:,0], h1_xyz[:,1], h1_xyz[:,2], c='r', label='h1')
+        ax.scatter(smpl_xyz[:,0], smpl_xyz[:,1], smpl_xyz[:,2], c='b', label='SMPL')
+        for (i, j) in h1_skeleton_edges:
+            ax.plot([h1_xyz[i,0], h1_xyz[j,0]],
+                    [h1_xyz[i,1], h1_xyz[j,1]],
+                    [h1_xyz[i,2], h1_xyz[j,2]], c='r')
+        for (i, j) in smpl_skeleton_edges:
+            ax.plot([smpl_xyz[i,0], smpl_xyz[j,0]],
+                    [smpl_xyz[i,1], smpl_xyz[j,1]],
+                    [smpl_xyz[i,2], smpl_xyz[j,2]], c='b')
+        for i in range(n_h1):
+            ax.text(h1_xyz[i,0], h1_xyz[i,1], h1_xyz[i,2], h1_joint_pick[i], color='r')
+        for i in range(n_smpl):
+            ax.text(smpl_xyz[i,0], smpl_xyz[i,1], smpl_xyz[i,2], smpl_joint_pick[i], color='b')
+        ax.legend()
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        ax.set_title('H1 and SMPL Joint Positions')
+        plt.draw()
+        plt.pause(0.01)
 
     optimizer_shape.zero_grad()
     loss.backward()
@@ -180,3 +232,31 @@ joblib.dump(
 )  # V2 has hip jointsrea
 print(f"shape fitted and saved to data/h1/shape_optimized_v1.pkl")
 print(f"shape: {shape_new.detach().cpu().numpy()}, scale: {scale.detach().cpu().numpy()}")
+
+plt.ioff()
+ax.cla()
+h1_xyz = fk_return.global_translation_extend[:, :, h1_joint_pick_idx].detach().cpu().numpy()
+smpl_xyz = joints[:, smpl_joint_pick_idx].detach().cpu().numpy()
+h1_xyz = np.asarray(h1_xyz).reshape(-1, 3)
+smpl_xyz = np.asarray(smpl_xyz).reshape(-1, 3)
+ax.scatter(h1_xyz[:,0], h1_xyz[:,1], h1_xyz[:,2], c='r', label='h1')
+ax.scatter(smpl_xyz[:,0], smpl_xyz[:,1], smpl_xyz[:,2], c='b', label='SMPL')
+for (i, j) in h1_skeleton_edges:
+    ax.plot([h1_xyz[i,0], h1_xyz[j,0]],
+            [h1_xyz[i,1], h1_xyz[j,1]],
+            [h1_xyz[i,2], h1_xyz[j,2]], c='r')
+for (i, j) in smpl_skeleton_edges:
+    ax.plot([smpl_xyz[i,0], smpl_xyz[j,0]],
+            [smpl_xyz[i,1], smpl_xyz[j,1]],
+            [smpl_xyz[i,2], smpl_xyz[j,2]], c='b')
+for i in range(n_h1):
+    ax.text(h1_xyz[i,0], h1_xyz[i,1], h1_xyz[i,2], h1_joint_pick[i], color='r')
+for i in range(n_smpl):
+    ax.text(smpl_xyz[i,0], smpl_xyz[i,1], smpl_xyz[i,2], smpl_joint_pick[i], color='b')
+ax.legend()
+ax.set_xlabel('X')
+ax.set_ylabel('Y')
+ax.set_zlabel('Z')
+ax.set_title('H1 and SMPL Joint Positions')
+plt.draw()
+plt.show()

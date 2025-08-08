@@ -14,6 +14,7 @@ import os
 import sys
 import pdb
 import os.path as osp
+import copy
 
 sys.path.append(os.getcwd())
 
@@ -24,7 +25,8 @@ import torch
 from phc.utils.motion_lib_h1 import MotionLibH1
 from smpl_sim.poselib.skeleton.skeleton3d import SkeletonTree
 from phc.utils.flags import flags
-
+from phc.utils.torch_h1_humanoid_batch import Humanoid_Batch
+from phc.utils.torch_ballbot_batch import Ballbot_Batch
 
 flags.test = True
 flags.im_eval = True
@@ -43,16 +45,18 @@ class AssetDesc:
         self.file_name = file_name
         self.flip_visual_attachments = flip_visual_attachments
 
+robot = "ballbot"
 
-h1_xml = "resources/robots/h1/h1.xml"
-h1_urdf = "resources/robots/h1/urdf/h1.urdf"
+robot_xml = f"resources/robots/{robot}/{robot}.xml"
+robot_urdf = f"resources/robots/{robot}/urdf/{robot}.urdf"
 asset_descriptors = [
     # AssetDesc(h1_xml, False),
-    AssetDesc(h1_urdf, False),
+    AssetDesc(robot_urdf, False),
 ]
-sk_tree = SkeletonTree.from_mjcf(h1_xml)
+sk_tree = SkeletonTree.from_mjcf(robot_xml)
 
-motion_file = "legged_gym/resources/motions/h1/stable_punch.pkl"
+motion_file = f"data/{robot}/stable_punch.pkl"
+# motion_file = "legged_gym/resources/motions/h1/amass_phc_filtered.pkl"
 if os.path.exists(motion_file):
     print(f"loading {motion_file}")
 else:
@@ -131,6 +135,39 @@ asset_options.use_mesh_materials = True
 print("Loading asset '%s' from '%s'" % (asset_file, asset_root))
 asset = gym.load_asset(sim, asset_root, asset_file, asset_options)
 
+# print asset joint names
+dof_names = gym.get_asset_dof_names(asset)
+print("Asset DOF names:", dof_names)
+print("Asset DOF count:", len(dof_names))
+
+if robot == "ballbot":
+    robot_batch = Ballbot_Batch(extend_hand=False)  # load forward kinematics model
+elif robot == "h1":
+    robot_batch = Humanoid_Batch(extend_head=True)
+
+# Define correspondences between robot and SMPL joints
+robot_joint_names_augment = copy.deepcopy(robot_batch.model_names)
+joint_name_to_idx = {name: idx for idx, name in enumerate(robot_joint_names_augment)}
+reorder_idx = []
+for name in dof_names:
+    if name in joint_name_to_idx:
+        reorder_idx.append(joint_name_to_idx[name])
+    else:
+        reorder_idx.append(-1)  # If the name is not found, append -1
+
+def reorder_motion_dof(motion_dof_values, reorder_idx):
+    # motion_dof_values: shape (N, num_joints)
+    # reorder_idx: list of int, len = num_dofs
+    device = motion_dof_values.device
+    idx_tensor = torch.tensor(reorder_idx, dtype=torch.long, device=device)
+    # 处理 -1（无对应DOF）的位置，填0
+    mask = idx_tensor == -1
+    idx_tensor[mask] = 0  # 临时填0，后面再置零
+    reordered = motion_dof_values[:, idx_tensor]
+    if mask.any():
+        reordered[:, mask] = 0.0
+    return reordered
+
 # set up the env grid
 num_envs = 1
 num_per_row = 5
@@ -173,7 +210,7 @@ gym.prepare_sim(sim)
 
 device = (torch.device("cuda", index=0) if torch.cuda.is_available() else torch.device("cpu"))
 
-motion_lib = MotionLibH1(motion_file=motion_file, device=device, masterfoot_conifg=None, fix_height=False, multi_thread=False, mjcf_file=h1_xml)
+motion_lib = MotionLibH1(motion_file=motion_file, device=device, masterfoot_conifg=None, fix_height=False, multi_thread=False, mjcf_file=robot_xml)
 num_motions = 5
 curr_start = 0
 motion_lib.load_motions(skeleton_trees=[sk_tree] * num_motions, gender_betas=[torch.zeros(17)] * num_motions, limb_weights=[np.zeros(10)] * num_motions, random_sample=False)
@@ -232,6 +269,10 @@ while not gym.query_viewer_has_closed(viewer):
     root_pos, root_rot, dof_pos, root_vel, root_ang_vel, dof_vel, smpl_params, limb_weights, pose_aa, rb_pos, rb_rot, body_vel, body_ang_vel = \
                 motion_res["root_pos"], motion_res["root_rot"], motion_res["dof_pos"], motion_res["root_vel"], motion_res["root_ang_vel"], motion_res["dof_vel"], \
                 motion_res["motion_bodies"], motion_res["motion_limb_weights"], motion_res["motion_aa"], motion_res["rg_pos"], motion_res["rb_rot"], motion_res["body_vel"], motion_res["body_ang_vel"]
+    
+    # print("Asset DOF count:", num_dofs)
+    # print("Motion dof_pos shape:", dof_pos.shape)
+    
     if args.show_axis:
         gym.clear_lines(viewer)
         
@@ -299,10 +340,12 @@ while not gym.query_viewer_has_closed(viewer):
 
     gym.refresh_actor_root_state_tensor(sim)
 
+    dof_pos = reorder_motion_dof(dof_pos, reorder_idx)
+    
     # dof_pos = dof_pos.cpu().numpy()
     # dof_states['pos'] = dof_pos
     # speed = speeds[current_dof]
-    dof_state = torch.stack([dof_pos, torch.zeros_like(dof_pos)], dim=-1).squeeze().repeat(num_envs, 1)
+    dof_state = torch.stack([dof_pos[..., :num_dofs], torch.zeros_like(dof_pos[..., :num_dofs])], dim=-1).squeeze().repeat(num_envs, 1)
     gym.set_dof_state_tensor_indexed(sim, gymtorch.unwrap_tensor(dof_state), gymtorch.unwrap_tensor(env_ids), len(env_ids))
 
     gym.simulate(sim)

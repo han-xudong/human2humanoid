@@ -54,7 +54,7 @@ def load_amass_data(data_path):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--amass_root", type=str, default="data/AMASS/AMASS_Complete")
+    parser.add_argument("--amass_root", type=str, default="data/AMASS/stable_punch")
     args = parser.parse_args()
 
     device = torch.device("cpu")
@@ -343,4 +343,4 @@ if __name__ == "__main__":
     #     joblib.dump(data_dump, "data/ballbot/test.pkl")
 
     # import ipdb; ipdb.set_trace()
-    joblib.dump(data_dump, "data/ballbot/amass_all.pkl")
+    joblib.dump(data_dump, f"data/ballbot/{args.amass_root.split('/')[-1]}.pkl")

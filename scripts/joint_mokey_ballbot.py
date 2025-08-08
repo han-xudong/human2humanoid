@@ -35,7 +35,7 @@ class AssetDesc:
 asset_root = "./"
 
 asset_descriptors = [
-    AssetDesc("resources/robots/h1/h1.xml", False),
+    AssetDesc("resources/robots/ballbot/ballbot.xml", False),
 ]
 
 # parse arguments

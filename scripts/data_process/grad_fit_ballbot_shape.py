@@ -5,6 +5,9 @@ import pdb
 import os.path as osp
 import copy
 
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+
 sys.path.append(os.getcwd())
 
 from phc.utils import torch_utils
@@ -38,66 +41,11 @@ from smpl_sim.smpllib.smpl_joint_names import (
 )
 from phc.utils.torch_ballbot_batch import Ballbot_Batch, BALLBOT_ROTATION_AXIS
 
-ballbot_joint_names = [
-    "base_link",
-    "torso_link",
-    "neck_link",
-    "head_link",
-    "right_shoulder_pitch_link",
-    "right_shoulder_roll_link",
-    "right_shoulder_yaw_link",
-    "right_elbow_link",
-    "right_hand_link",
-    "left_shoulder_pitch_link",
-    "left_shoulder_roll_link",
-    "left_shoulder_yaw_link",
-    "left_elbow_link",
-    "left_hand_link",
-    "axle_1_link",
-    "fat_roller_1_1_link",
-    "fat_roller_1_2_link",
-    "fat_roller_1_3_link",
-    "fat_roller_1_4_link",
-    "fat_roller_1_5_link",
-    "fat_roller_1_6_link",
-    "thin_roller_1_1_link",
-    "thin_roller_1_2_link",
-    "thin_roller_1_3_link",
-    "thin_roller_1_4_link",
-    "thin_roller_1_5_link",
-    "thin_roller_1_6_link",
-    "axle_2_link",
-    "fat_roller_2_1_link",
-    "fat_roller_2_2_link",
-    "fat_roller_2_3_link",
-    "fat_roller_2_4_link",
-    "fat_roller_2_5_link",
-    "fat_roller_2_6_link",
-    "thin_roller_2_1_link",
-    "thin_roller_2_2_link",
-    "thin_roller_2_3_link",
-    "thin_roller_2_4_link",
-    "thin_roller_2_5_link",
-    "thin_roller_2_6_link",
-    "axle_3_link",
-    "fat_roller_3_1_link",
-    "fat_roller_3_2_link",
-    "fat_roller_3_3_link",
-    "fat_roller_3_4_link",
-    "fat_roller_3_5_link",
-    "fat_roller_3_6_link",
-    "thin_roller_3_1_link",
-    "thin_roller_3_2_link",
-    "thin_roller_3_3_link",
-    "thin_roller_3_4_link",
-    "thin_roller_3_5_link",
-    "thin_roller_3_6_link",
-    "ball_link",
-]
+
 ballbot_fk = Ballbot_Batch(extend_hand=False)  # load forward kinematics model
 
 #### Define correspondences between ballbot and smpl joints
-ballbot_joint_names_augment = copy.deepcopy(ballbot_joint_names)
+ballbot_joint_names_augment = copy.deepcopy(ballbot_fk.model_names)
 ballbot_joint_pick = [
     "torso_link",
     "left_shoulder_roll_link",
@@ -170,7 +118,50 @@ shape_new = Variable(torch.zeros([1, 10]).to(device), requires_grad=True)
 scale = Variable(torch.ones([1]).to(device), requires_grad=True)
 optimizer_shape = torch.optim.Adam([shape_new, scale], lr=0.1)
 
-for iteration in range(2000):
+ballbot_xyz = fk_return.global_translation[:, :, ballbot_joint_pick_idx].detach().cpu().numpy()
+smpl_xyz = joints[:, smpl_joint_pick_idx].detach().cpu().numpy()
+
+n_ballbot = min(len(ballbot_joint_pick), ballbot_xyz.shape[2])
+n_smpl = min(len(smpl_joint_pick), smpl_xyz.shape[1])
+smpl_skeleton_edges = [
+    (0, 1),  # Torso -> L_Shoulder
+    (1, 2),  # L_Shoulder -> L_Elbow
+    (2, 3),  # L_Elbow -> L_Hand
+    (0, 4),  # Torso -> R_Shoulder
+    (4, 5),  # R_Shoulder -> R_Elbow
+    (5, 6),  # R_Elbow -> R_Hand
+    (0, 7),  # Torso -> Head
+]
+ballbot_skeleton_edges = smpl_skeleton_edges
+
+plt.ion()
+fig = plt.figure(figsize=(10, 10))
+ax = fig.add_subplot(111, projection='3d')
+ballbot_xyz = np.asarray(ballbot_xyz).reshape(-1, 3)
+smpl_xyz = np.asarray(smpl_xyz).reshape(-1, 3)
+ax.scatter(ballbot_xyz[:,0], ballbot_xyz[:,1], ballbot_xyz[:,2], c='r', label='Ballbot')
+ax.scatter(smpl_xyz[:,0], smpl_xyz[:,1], smpl_xyz[:,2], c='b', label='SMPL')
+for (i, j) in ballbot_skeleton_edges:
+    ax.plot([ballbot_xyz[i,0], ballbot_xyz[j,0]],
+            [ballbot_xyz[i,1], ballbot_xyz[j,1]],
+            [ballbot_xyz[i,2], ballbot_xyz[j,2]], c='r')
+for (i, j) in smpl_skeleton_edges:
+    ax.plot([smpl_xyz[i,0], smpl_xyz[j,0]],
+            [smpl_xyz[i,1], smpl_xyz[j,1]],
+            [smpl_xyz[i,2], smpl_xyz[j,2]], c='b')
+for i in range(n_ballbot):
+    ax.text(ballbot_xyz[i,0], ballbot_xyz[i,1], ballbot_xyz[i,2], ballbot_joint_pick[i], color='r')
+for i in range(n_smpl):
+    ax.text(smpl_xyz[i,0], smpl_xyz[i,1], smpl_xyz[i,2], smpl_joint_pick[i], color='b')
+ax.legend()
+ax.set_xlabel('X')
+ax.set_ylabel('Y')
+ax.set_zlabel('Z')
+ax.set_title('Ballbot and SMPL Joint Positions')
+plt.draw()
+plt.pause(0.1)
+
+for iteration in range(1500):
     verts, joints = smpl_parser_n.get_joints_verts(pose_aa_stand, shape_new, trans[0:1])
     root_pos = joints[:, 0]
     joints = (joints - joints[:, 0]) * scale + root_pos
@@ -182,10 +173,38 @@ for iteration in range(2000):
     loss = loss_g
     if iteration % 100 == 0:
         print(iteration, loss.item() * 1000)
+        
+        ax.cla()
+        ballbot_xyz = fk_return.global_translation[:, :, ballbot_joint_pick_idx].detach().cpu().numpy()
+        smpl_xyz = joints[:, smpl_joint_pick_idx].detach().cpu().numpy()
+        ballbot_xyz = np.asarray(ballbot_xyz).reshape(-1, 3)
+        smpl_xyz = np.asarray(smpl_xyz).reshape(-1, 3)
+        ax.scatter(ballbot_xyz[:,0], ballbot_xyz[:,1], ballbot_xyz[:,2], c='r', label='Ballbot')
+        ax.scatter(smpl_xyz[:,0], smpl_xyz[:,1], smpl_xyz[:,2], c='b', label='SMPL')
+        for (i, j) in ballbot_skeleton_edges:
+            ax.plot([ballbot_xyz[i,0], ballbot_xyz[j,0]],
+                    [ballbot_xyz[i,1], ballbot_xyz[j,1]],
+                    [ballbot_xyz[i,2], ballbot_xyz[j,2]], c='r')
+        for (i, j) in smpl_skeleton_edges:
+            ax.plot([smpl_xyz[i,0], smpl_xyz[j,0]],
+                    [smpl_xyz[i,1], smpl_xyz[j,1]],
+                    [smpl_xyz[i,2], smpl_xyz[j,2]], c='b')
+        for i in range(n_ballbot):
+            ax.text(ballbot_xyz[i,0], ballbot_xyz[i,1], ballbot_xyz[i,2], ballbot_joint_pick[i], color='r')
+        for i in range(n_smpl):
+            ax.text(smpl_xyz[i,0], smpl_xyz[i,1], smpl_xyz[i,2], smpl_joint_pick[i], color='b')
+        ax.legend()
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        ax.set_title('Ballbot and SMPL Joint Positions')
+        plt.draw()
+        plt.pause(0.01)
 
     optimizer_shape.zero_grad()
     loss.backward()
     optimizer_shape.step()
+    
     
 # Save the fitted shape parameters
 os.makedirs("data/ballbot", exist_ok=True)
@@ -194,3 +213,31 @@ joblib.dump(
 )  # V2 has hip jointsrea
 print(f"shape fitted and saved to data/ballbot/shape_optimized_v1.pkl")
 print(f"shape: {shape_new.detach().cpu().numpy()}, scale: {scale.detach().cpu().numpy()}")
+
+plt.ioff()
+ax.cla()
+ballbot_xyz = fk_return.global_translation[:, :, ballbot_joint_pick_idx].detach().cpu().numpy()
+smpl_xyz = joints[:, smpl_joint_pick_idx].detach().cpu().numpy()
+ballbot_xyz = np.asarray(ballbot_xyz).reshape(-1, 3)
+smpl_xyz = np.asarray(smpl_xyz).reshape(-1, 3)
+ax.scatter(ballbot_xyz[:,0], ballbot_xyz[:,1], ballbot_xyz[:,2], c='r', label='Ballbot')
+ax.scatter(smpl_xyz[:,0], smpl_xyz[:,1], smpl_xyz[:,2], c='b', label='SMPL')
+for (i, j) in ballbot_skeleton_edges:
+    ax.plot([ballbot_xyz[i,0], ballbot_xyz[j,0]],
+            [ballbot_xyz[i,1], ballbot_xyz[j,1]],
+            [ballbot_xyz[i,2], ballbot_xyz[j,2]], c='r')
+for (i, j) in smpl_skeleton_edges:
+    ax.plot([smpl_xyz[i,0], smpl_xyz[j,0]],
+            [smpl_xyz[i,1], smpl_xyz[j,1]],
+            [smpl_xyz[i,2], smpl_xyz[j,2]], c='b')
+for i in range(n_ballbot):
+    ax.text(ballbot_xyz[i,0], ballbot_xyz[i,1], ballbot_xyz[i,2], ballbot_joint_pick[i], color='r')
+for i in range(n_smpl):
+    ax.text(smpl_xyz[i,0], smpl_xyz[i,1], smpl_xyz[i,2], smpl_joint_pick[i], color='b')
+ax.legend()
+ax.set_xlabel('X')
+ax.set_ylabel('Y')
+ax.set_zlabel('Z')
+ax.set_title('Ballbot and SMPL Joint Positions')
+plt.draw()
+plt.show()
