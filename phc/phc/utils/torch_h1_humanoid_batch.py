@@ -77,8 +77,6 @@ class Humanoid_Batch:
         print("Length of joint names:", len(self.joint_names))
         print("Parents:", self._parents)
         print("Length of parents:", len(self._parents))
-        print("Offsets:", self._offsets)
-        print("Shape of offsets:", self._offsets.shape)
         print("Joints range:", self.joints_range)
         print("Shape of joints range:", self.joints_range.shape)
         
@@ -255,14 +253,70 @@ class Humanoid_Batch:
         return angular_velocity  
 
 if __name__ == "__main__":
-    humanoid = Humanoid_Batch()
-    print("Humanoid model names:", humanoid.model_names)
-    print("Length of model names:", len(humanoid.model_names))
-    print("Humanoid joint names:", humanoid.joint_names)
-    print("Length of joint names:", len(humanoid.joint_names))
-    print("Humanoid parents:", humanoid._parents)
-    print("Length of parents:", len(humanoid._parents))
-    print("Humanoid offsets:", humanoid._offsets)
-    print("Shape of offsets:", humanoid._offsets.shape)
-    print("Humanoid joints range:", humanoid.joints_range)
-    print("Shape of joints range:", humanoid.joints_range.shape)
+    humanoid = Humanoid_Batch(extend_hand=True, extend_head=True)
+    fk_return = humanoid.fk_batch(
+        pose=torch.zeros((1, 1, 22, 3)),
+        trans=torch.zeros((1, 1, 3)),
+    )
+    humanoid_skeleton_edges = [
+        (0, 1),   # Pelvis -> L_Hip_yaw
+        (1, 2),   # L_Hip_yaw -> L_Hip_roll
+        (2, 3),   # L_Hip_roll -> L_Hip_pitch
+        (3, 4),   # L_Hip_pitch -> L_Knee
+        (4, 5),   # L_Knee -> L_Ankle
+        (0, 6),   # Pelvis -> R_Hip_yaw
+        (6, 7),   # R_Hip_yaw -> R_Hip_roll
+        (7, 8),   # R_Hip_roll -> R_Hip_pitch
+        (8, 9),   # R_Hip_pitch -> R_Knee
+        (9, 10),  # R_Knee -> R_Ankle
+        (0, 11),  # Pelvis -> Torso
+        (11, 12), # Torso -> L_Shoulder_pitch
+        (12, 13), # L_Shoulder_pitch -> L_Roll_pitch
+        (13, 14), # L_Roll_pitch -> L_Yaw_pitch
+        (14, 15), # L_Yaw_pitch -> L_Elbow
+        (0, 16),  # Pelvis -> R_Shoulder_pitch
+        (16, 17), # R_Shoulder_pitch -> R_Roll_pitch
+        (17, 18), # R_Roll_pitch -> R_Yaw_pitch
+        (18, 19), # R_Yaw_pitch -> R_Elbow
+        (15, 20),  # L_Elbow -> L_Hand
+        (19, 21),  # R_Elbow -> R_Hand
+        (0, 22),  # Pelvis -> Head
+    ]
+    
+    # plot all body
+    import matplotlib.pyplot as plt
+    from mpl_toolkits.mplot3d import Axes3D
+    
+    def set_axes_equal(ax):
+        x_limits = ax.get_xlim3d()
+        y_limits = ax.get_ylim3d()
+        z_limits = ax.get_zlim3d()
+        x_range = abs(x_limits[1] - x_limits[0])
+        y_range = abs(y_limits[1] - y_limits[0])
+        z_range = abs(z_limits[1] - z_limits[0])
+        max_range = max([x_range, y_range, z_range])
+        x_middle = np.mean(x_limits)
+        y_middle = np.mean(y_limits)
+        z_middle = np.mean(z_limits)
+        ax.set_xlim3d([x_middle - max_range/2, x_middle + max_range/2])
+        ax.set_ylim3d([y_middle - max_range/2, y_middle + max_range/2])
+        ax.set_zlim3d([z_middle - max_range/2, z_middle + max_range/2])
+    
+    fig = plt.figure(figsize=(10, 10))
+    ax = fig.add_subplot(111, projection='3d')
+    ax.set_title("H1 Humanoid Skeleton")
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    humanoid_xyz = fk_return.global_translation_extend[0, 0, :, :].detach().cpu().numpy()
+    humanoid_xyz = np.asarray(humanoid_xyz).reshape(-1, 3)
+    print("Humanoid XYZ shape:", humanoid_xyz.shape)
+    ax.scatter(humanoid_xyz[:, 0], humanoid_xyz[:, 1], humanoid_xyz[:, 2], c='r', label='H1 Humanoid')
+    for (i, j) in humanoid_skeleton_edges:
+        ax.plot([humanoid_xyz[i, 0], humanoid_xyz[j, 0]],
+                [humanoid_xyz[i, 1], humanoid_xyz[j, 1]],
+                [humanoid_xyz[i, 2], humanoid_xyz[j, 2]], c='r')
+    for i in range(len(humanoid.model_names)):
+        ax.text(humanoid_xyz[i, 0], humanoid_xyz[i, 1], humanoid_xyz[i, 2], humanoid.model_names[i], color='r')
+    set_axes_equal(ax)
+    plt.show()

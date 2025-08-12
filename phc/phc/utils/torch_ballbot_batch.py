@@ -4,61 +4,58 @@ import phc.utils.rotation_conversions as tRot
 import xml.etree.ElementTree as ETree
 from easydict import EasyDict
 import scipy.ndimage.filters as filters
+from scipy.spatial.transform import Rotation as sRot
 import smpl_sim.poselib.core.rotation3d as pRot
 
 BALLBOT_ROTATION_AXIS = torch.tensor([
+    [0, 0, 1], # left_shoulder_pitch
+    [0, 0, 1], # left_shoulder_roll
+    [0, 0, 1], # left_shoulder_yaw
+    [0, 0, 1], # left_elbow
+    
+    [0, 0, 1], # right_shoulder_pitch
+    [0, 0, 1], # right_shoulder_roll
+    [0, 0, 1], # right_shoulder_yaw
+    [0, 0, 1], # right_elbow
+    
     [0, 0, 1], # neck
     [0, 0, 1], # head
     
-    [0, 0, 1], # r_pitch
-    [0, 0, 1], # r_roll
-    [0, 0, 1], # r_yaw
-    [0, 0, 1], # r_elbow
-
-    [0, 0, 1], # l_pitch
-    [0, 0, 1], # l_roll
-    [0, 0, 1], # l_yaw
-    [0, 0, 1], # l_elbow
-
-    [0, 0, 1], # axle_1
-    [1, 0, 0], # fat_roller_1_1
-    [1, 0, 0], # fat_roller_1_2
-    [1, 0, 0], # fat_roller_1_3
-    [1, 0, 0], # fat_roller_1_4
-    [1, 0, 0], # fat_roller_1_5
-    [1, 0, 0], # fat_roller_1_6
-    [1, 0, 0], # thin_roller_1_1
-    [1, 0, 0], # thin_roller_1_2
-    [1, 0, 0], # thin_roller_1_3
-    [1, 0, 0], # thin_roller_1_4
-    [1, 0, 0], # thin_roller_1_5
-    [1, 0, 0], # thin_roller_1_6
-    [0, 0, 1], # axle_2
-    [1, 0, 0], # fat_roller_2_1
-    [1, 0, 0], # fat_roller_2_2
-    [1, 0, 0], # fat_roller_2_3
-    [1, 0, 0], # fat_roller_2_4
-    [1, 0, 0], # fat_roller_2_5
-    [1, 0, 0], # fat_roller_2_6
-    [1, 0, 0], # thin_roller_2_1
-    [1, 0, 0], # thin_roller_2_2
-    [1, 0, 0], # thin_roller_2_3
-    [1, 0, 0], # thin_roller_2_4
-    [1, 0, 0], # thin_roller_2_5
-    [1, 0, 0], # thin_roller_2_6
-    [0, 0, 1], # axle_3
-    [1, 0, 0], # fat_roller_3_1
-    [1, 0, 0], # fat_roller_3_2
-    [1, 0, 0], # fat_roller_3_3
-    [1, 0, 0], # fat_roller_3_4
-    [1, 0, 0], # fat_roller_3_5
-    [1, 0, 0], # fat_roller_3_6
-    [1, 0, 0], # thin_roller_3_1
-    [1, 0, 0], # thin_roller_3_2
-    [1, 0, 0], # thin_roller_3_3
-    [1, 0, 0], # thin_roller_3_4
-    [1, 0, 0], # thin_roller_3_5
-    [1, 0, 0], # thin_roller_3_6
+    [0, 0, 1], # wheel_base_1
+    [1, 0, 0], # large_roller_1_1
+    [1, 0, 0], # large_roller_1_2
+    [1, 0, 0], # large_roller_1_3
+    [1, 0, 0], # large_roller_1_4
+    [1, 0, 0], # large_roller_1_5
+    [1, 0, 0], # small_roller_1_1
+    [1, 0, 0], # small_roller_1_2
+    [1, 0, 0], # small_roller_1_3
+    [1, 0, 0], # small_roller_1_4
+    [1, 0, 0], # small_roller_1_5
+    [0, 0, 1], # wheel_base_2
+    [1, 0, 0], # large_roller_2_1
+    [1, 0, 0], # large_roller_2_2
+    [1, 0, 0], # large_roller_2_3
+    [1, 0, 0], # large_roller_2_4
+    [1, 0, 0], # large_roller_2_5
+    [1, 0, 0], # small_roller_2_1
+    [1, 0, 0], # small_roller_2_2
+    [1, 0, 0], # small_roller_2_3
+    [1, 0, 0], # small_roller_2_4
+    [1, 0, 0], # small_roller_2_5
+    [0, 0, 1], # wheel_base_3
+    [1, 0, 0], # large_roller_3_1
+    [1, 0, 0], # large_roller_3_2
+    [1, 0, 0], # large_roller_3_3
+    [1, 0, 0], # large_roller_3_4
+    [1, 0, 0], # large_roller_3_5
+    [1, 0, 0], # small_roller_3_1
+    [1, 0, 0], # small_roller_3_2
+    [1, 0, 0], # small_roller_3_3
+    [1, 0, 0], # small_roller_3_4
+    [1, 0, 0], # small_roller_3_5
+    
+    
 ])
 
 
@@ -69,11 +66,12 @@ class Ballbot_Batch:
         self.extend_head = extend_head
         if extend_hand:
             self.model_names = mjcf_data['node_names'] + ["left_hand_link", "right_hand_link"]
-            self._parents = torch.cat((mjcf_data['parent_indices'], torch.tensor([15, 19]))).to(device) # Adding the hands joints
-            arm_length = 0.3
-            self._offsets = torch.cat((mjcf_data['local_translation'], torch.tensor([[arm_length, 0, 0], [arm_length, 0, 0]])), dim = 0)[None, ].to(device)
+            self._parents = torch.cat((mjcf_data['parent_indices'], torch.tensor([5, 9]))).to(device) # Adding the hands joints
+            arm_length = 0.25
+            self._offsets = torch.cat((mjcf_data['local_translation'], torch.tensor([[0, -arm_length, 0], [0, -arm_length, 0]])), dim = 0)[None, ].to(device)
             self._local_rotation = torch.cat((mjcf_data['local_rotation'], torch.tensor([[1, 0, 0, 0], [1, 0, 0, 0]])), dim = 0)[None, ].to(device)
             self._remove_idx = 2
+            self.joint_names = mjcf_data['joint_names']
         else:
             self._parents = mjcf_data['parent_indices']
             self.model_names = mjcf_data['node_names']
@@ -99,8 +97,6 @@ class Ballbot_Batch:
         print("Length of joint names:", len(self.joint_names))
         print("Ballbot parents:", self._parents)
         print("Length of parents:", len(self._parents))
-        print("Ballbot offsets:", self._offsets)
-        print("Shape of offsets:", self._offsets.shape)
         print("Ballbot joints range:", self.joints_range)
         print("Shape of joints range:", self.joints_range.shape)
 
@@ -130,7 +126,13 @@ class Ballbot_Batch:
             node_name = xml_node.attrib.get("name")
             # parse the local translation into float list
             pos = np.fromstring(xml_node.attrib.get("pos", "0 0 0"), dtype=float, sep=" ")
-            quat = np.fromstring(xml_node.attrib.get("quat", "1 0 0 0"), dtype=float, sep=" ")
+            euler = np.fromstring(xml_node.attrib.get("euler", "0 0 0"), dtype=float, sep=" ")
+            if len(euler) == 3:
+                quat = sRot.from_euler("xyz", euler, degrees=False).as_quat()
+                # scalar first
+                quat = np.concatenate([quat[3:], quat[:3]])
+            else:
+                quat = np.fromstring(xml_node.attrib.get("quat", "1 0 0 0"), dtype=float, sep=" ")
             node_names.append(node_name)
             parent_indices.append(parent_index)
             local_translation.append(pos)
@@ -143,7 +145,7 @@ class Ballbot_Batch:
                 joint_names.append(joint_name)
                 if not joint.attrib.get("range") is None: 
                     joints_range.append(np.fromstring(joint.attrib.get("range"), dtype=float, sep=" "))
-                elif joint.attrib.get("name") != "floating_base_joint" and joint.attrib.get("type") == "hinge":
+                elif joint.attrib.get("type") == "hinge":
                     joints_range.append(np.array([-np.pi, np.pi], dtype=float))
                     
             
@@ -279,14 +281,65 @@ class Ballbot_Batch:
     
 if __name__ == "__main__":
     # Example usage
-    ballbot = Ballbot_Batch(extend_hand=False)
-    print("Ballbot model names:", ballbot.model_names)
-    print("Length of model names:", len(ballbot.model_names))
-    print("Ballbot joint names:", ballbot.joint_names)
-    print("Length of joint names:", len(ballbot.joint_names))
-    print("Ballbot parents:", ballbot._parents)
-    print("Length of parents:", len(ballbot._parents))
-    print("Ballbot offsets:", ballbot._offsets)
-    print("Shape of offsets:", ballbot._offsets.shape)
-    print("Ballbot joints range:", ballbot.joints_range)
-    print("Shape of joints range:", ballbot.joints_range.shape)
+    ballbot = Ballbot_Batch()
+    
+    pose = np.zeros((1, 1, 54, 3))
+
+    pose = torch.tensor(pose, dtype=torch.float32)
+    
+    fk_return = ballbot.fk_batch(
+        pose=pose,
+        trans=torch.zeros((1, 1, 3))
+    )
+    ballbot_skeleton_edges = [
+        (0, 1), # Base -> Torso
+        (1, 2), # Torso -> Left Shoulder Pitch
+        (2, 3), # Left Shoulder Pitch -> Left Shoulder Roll
+        (3, 4), # Left Shoulder Roll -> Left Shoulder Yaw
+        (4, 5), # Left Shoulder Yaw -> Left Elbow
+        (1, 6), # Torso -> Right Shoulder Pitch
+        (6, 7), # Right Shoulder Pitch -> Right Shoulder Roll
+        (7, 8), # Right Shoulder Roll -> Right Shoulder Yaw
+        (8, 9), # Right Shoulder Yaw -> Right Elbow
+        (1, 10), # Torso -> Neck
+        (10, 11), # Neck -> Head
+        (5, 46), # Left Elbow -> Left Hand
+        (9, 47), # Right Elbow -> Right Hand
+    ]
+    
+    def set_axes_equal(ax):
+        x_limits = ax.get_xlim3d()
+        y_limits = ax.get_ylim3d()
+        z_limits = ax.get_zlim3d()
+        x_range = abs(x_limits[1] - x_limits[0])
+        y_range = abs(y_limits[1] - y_limits[0])
+        z_range = abs(z_limits[1] - z_limits[0])
+        max_range = max([x_range, y_range, z_range])
+        x_middle = np.mean(x_limits)
+        y_middle = np.mean(y_limits)
+        z_middle = np.mean(z_limits)
+        ax.set_xlim3d([x_middle - max_range/2, x_middle + max_range/2])
+        ax.set_ylim3d([y_middle - max_range/2, y_middle + max_range/2])
+        ax.set_zlim3d([z_middle - max_range/2, z_middle + max_range/2])
+    
+    # plot all body
+    import matplotlib.pyplot as plt
+    from mpl_toolkits.mplot3d import Axes3D
+    fig = plt.figure(figsize=(10, 10))
+    ax = fig.add_subplot(111, projection='3d')
+    ax.set_title("Ballbot Skeleton")
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.set_zlabel("Z")
+    ballbot_xyz = fk_return.global_translation_extend[:, :, :].detach().cpu().numpy()
+    ballbot_xyz = np.asarray(ballbot_xyz).reshape(-1, 3)
+    print("Ballbot XYZ shape:", ballbot_xyz.shape)
+    ax.scatter(ballbot_xyz[:, 0], ballbot_xyz[:, 1], ballbot_xyz[:, 2], c='r', label='Ballbot')
+    for i in range(len(ballbot.model_names)):
+        ax.text(ballbot_xyz[i,0], ballbot_xyz[i,1], ballbot_xyz[i,2], ballbot.model_names[i], color='r')
+    for (i, j) in ballbot_skeleton_edges:
+        ax.plot([ballbot_xyz[i,0], ballbot_xyz[j,0]],
+                [ballbot_xyz[i,1], ballbot_xyz[j,1]],
+                [ballbot_xyz[i,2], ballbot_xyz[j,2]], c='r')
+    set_axes_equal(ax)
+    plt.show()

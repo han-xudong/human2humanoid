@@ -23,6 +23,7 @@ import numpy as np
 from isaacgym import gymapi, gymutil, gymtorch
 import torch
 from phc.utils.motion_lib_h1 import MotionLibH1
+from phc.utils.motion_lib_ballbot import MotionLibBallbot
 from smpl_sim.poselib.skeleton.skeleton3d import SkeletonTree
 from phc.utils.flags import flags
 from phc.utils.torch_h1_humanoid_batch import Humanoid_Batch
@@ -45,7 +46,7 @@ class AssetDesc:
         self.file_name = file_name
         self.flip_visual_attachments = flip_visual_attachments
 
-robot = "ballbot"
+robot = "h1"  # "h1" or "ballbot"
 
 robot_xml = f"resources/robots/{robot}/{robot}.xml"
 robot_urdf = f"resources/robots/{robot}/urdf/{robot}.urdf"
@@ -61,6 +62,11 @@ if os.path.exists(motion_file):
     print(f"loading {motion_file}")
 else:
     raise ValueError(f"Motion file {motion_file} does not exist! Please run grad_fit_h1.py first.")
+
+if robot == "ballbot":
+    robot_batch = Ballbot_Batch()  # load forward kinematics model
+elif robot == "h1":
+    robot_batch = Humanoid_Batch(extend_head=True)
 
 # parse arguments
 args = gymutil.parse_arguments(description="Joint monkey: Animate degree-of-freedom ranges",
@@ -130,43 +136,41 @@ asset_options = gymapi.AssetOptions()
 # asset_options.fix_base_link = True
 # asset_options.flip_visual_attachments = asset_descriptors[
 #     args.asset_id].flip_visual_attachments
-asset_options.use_mesh_materials = True
+asset_options.use_mesh_materials = False
 
 print("Loading asset '%s' from '%s'" % (asset_file, asset_root))
 asset = gym.load_asset(sim, asset_root, asset_file, asset_options)
 
+    
 # print asset joint names
 dof_names = gym.get_asset_dof_names(asset)
 print("Asset DOF names:", dof_names)
 print("Asset DOF count:", len(dof_names))
 
-if robot == "ballbot":
-    robot_batch = Ballbot_Batch(extend_hand=False)  # load forward kinematics model
-elif robot == "h1":
-    robot_batch = Humanoid_Batch(extend_head=True)
+
 
 # Define correspondences between robot and SMPL joints
-robot_joint_names_augment = copy.deepcopy(robot_batch.model_names)
+robot_joint_names_augment = copy.deepcopy(robot_batch.joint_names)
 joint_name_to_idx = {name: idx for idx, name in enumerate(robot_joint_names_augment)}
+print("Joint name to index mapping:", joint_name_to_idx)
 reorder_idx = []
 for name in dof_names:
-    if name in joint_name_to_idx:
-        reorder_idx.append(joint_name_to_idx[name])
+    if str(name) in joint_name_to_idx:
+        reorder_idx.append(joint_name_to_idx[str(name)] - (1 if robot == "h1" else (0 if robot == "ballbot" else 0)))
     else:
         reorder_idx.append(-1)  # If the name is not found, append -1
-
+print("Reorder idx:", reorder_idx)
 def reorder_motion_dof(motion_dof_values, reorder_idx):
     # motion_dof_values: shape (N, num_joints)
     # reorder_idx: list of int, len = num_dofs
     device = motion_dof_values.device
-    idx_tensor = torch.tensor(reorder_idx, dtype=torch.long, device=device)
-    # 处理 -1（无对应DOF）的位置，填0
-    mask = idx_tensor == -1
-    idx_tensor[mask] = 0  # 临时填0，后面再置零
-    reordered = motion_dof_values[:, idx_tensor]
-    if mask.any():
-        reordered[:, mask] = 0.0
-    return reordered
+    reorder_dof_values = torch.zeros((motion_dof_values.shape[0], len(reorder_idx)), device=device)
+    for i, idx in enumerate(reorder_idx):
+        if idx >= 0:
+            reorder_dof_values[:, i] = motion_dof_values[:, idx]
+        else:
+            reorder_dof_values[:, i] = 0.0
+    return reorder_dof_values
 
 # set up the env grid
 num_envs = 1
@@ -185,6 +189,7 @@ envs = []
 actor_handles = []
 
 num_dofs = gym.get_asset_dof_count(asset)
+print("Asset DOF count:", num_dofs)
 print("Creating %d environments" % num_envs)
 for i in range(num_envs):
     # create env
@@ -210,8 +215,11 @@ gym.prepare_sim(sim)
 
 device = (torch.device("cuda", index=0) if torch.cuda.is_available() else torch.device("cpu"))
 
-motion_lib = MotionLibH1(motion_file=motion_file, device=device, masterfoot_conifg=None, fix_height=False, multi_thread=False, mjcf_file=robot_xml)
-num_motions = 5
+if robot == "h1":
+    motion_lib = MotionLibH1(motion_file=motion_file, device=device, masterfoot_conifg=None, fix_height=False, multi_thread=False, mjcf_file=robot_xml)
+elif robot == "ballbot":
+    motion_lib = MotionLibBallbot(motion_file=motion_file, device=device, masterfoot_conifg=None, fix_height=False, multi_thread=False, mjcf_file=robot_xml)
+num_motions = 30
 curr_start = 0
 motion_lib.load_motions(skeleton_trees=[sk_tree] * num_motions, gender_betas=[torch.zeros(17)] * num_motions, limb_weights=[np.zeros(10)] * num_motions, random_sample=False)
 motion_keys = motion_lib.curr_motion_keys
@@ -272,7 +280,8 @@ while not gym.query_viewer_has_closed(viewer):
     
     # print("Asset DOF count:", num_dofs)
     # print("Motion dof_pos shape:", dof_pos.shape)
-    
+    # print("dof_pos:", dof_pos.shape, dof_pos[0, :10])
+    # print("rb_pos:", rb_pos.shape, rb_pos[0, :10])
     if args.show_axis:
         gym.clear_lines(viewer)
         
@@ -342,10 +351,12 @@ while not gym.query_viewer_has_closed(viewer):
 
     dof_pos = reorder_motion_dof(dof_pos, reorder_idx)
     
+    # print("Reordered dof_pos:", dof_pos.shape, dof_pos[0, :10])
     # dof_pos = dof_pos.cpu().numpy()
     # dof_states['pos'] = dof_pos
     # speed = speeds[current_dof]
     dof_state = torch.stack([dof_pos[..., :num_dofs], torch.zeros_like(dof_pos[..., :num_dofs])], dim=-1).squeeze().repeat(num_envs, 1)
+    print("Dof state shape:", dof_state.shape, "Dof state:", dof_state[:10, 0])
     gym.set_dof_state_tensor_indexed(sim, gymtorch.unwrap_tensor(dof_state), gymtorch.unwrap_tensor(env_ids), len(env_ids))
 
     gym.simulate(sim)

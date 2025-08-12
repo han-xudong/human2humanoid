@@ -4,6 +4,7 @@ import sys
 import pdb
 import os.path as osp
 import copy
+import matplotlib.pyplot as plt
 
 sys.path.append(os.getcwd())
 
@@ -12,6 +13,7 @@ from smpl_sim.poselib.skeleton.skeleton3d import (
     SkeletonMotion,
     SkeletonState,
 )
+from smpl_sim.utils.smoothing_utils import gaussian_filter_1d_batch
 from scipy.spatial.transform import Rotation as sRot
 import numpy as np
 import torch
@@ -62,117 +64,62 @@ if __name__ == "__main__":
     ballbot_rotation_axis = torch.tensor(
         [
             [
-                [0, 0, 1],  # neck
-                [0, 0, 1],  # head
                 [0, 0, 1],  # r_pitch
-                [0, 0, 1],  # r_roll
+                [0, 0, 1],  # r_rolls
                 [0, 0, 1],  # r_yaw
                 [0, 0, 1],  # r_elbow
                 [0, 0, 1],  # l_pitch
                 [0, 0, 1],  # l_roll
                 [0, 0, 1],  # l_yaw
                 [0, 0, 1],  # l_elbow
-                [0, 0, 1],  # axle_1
-                [1, 0, 0],  # fat_roller_1_1
-                [1, 0, 0],  # fat_roller_1_2
-                [1, 0, 0],  # fat_roller_1_3
-                [1, 0, 0],  # fat_roller_1_4
-                [1, 0, 0],  # fat_roller_1_5
-                [1, 0, 0],  # fat_roller_1_6
-                [1, 0, 0],  # thin_roller_1_1
-                [1, 0, 0],  # thin_roller_1_2
-                [1, 0, 0],  # thin_roller_1_3
-                [1, 0, 0],  # thin_roller_1_4
-                [1, 0, 0],  # thin_roller_1_5
-                [1, 0, 0],  # thin_roller_1_6
-                [0, 0, 1],  # axle_2
-                [1, 0, 0],  # fat_roller_2_1
-                [1, 0, 0],  # fat_roller_2_2
-                [1, 0, 0],  # fat_roller_2_3
-                [1, 0, 0],  # fat_roller_2_4
-                [1, 0, 0],  # fat_roller_2_5
-                [1, 0, 0],  # fat_roller_2_6
-                [1, 0, 0],  # thin_roller_2_1
-                [1, 0, 0],  # thin_roller_2_2
-                [1, 0, 0],  # thin_roller_2_3
-                [1, 0, 0],  # thin_roller_2_4
-                [1, 0, 0],  # thin_roller_2_5
-                [1, 0, 0],  # thin_roller_2_6
-                [0, 0, 1],  # axle_3
-                [1, 0, 0],  # fat_roller_3_1
-                [1, 0, 0],  # fat_roller_3_2
-                [1, 0, 0],  # fat_roller_3_3
-                [1, 0, 0],  # fat_roller_3_4
-                [1, 0, 0],  # fat_roller_3_5
-                [1, 0, 0],  # fat_roller_3_6
-                [1, 0, 0],  # thin_roller_3_1
-                [1, 0, 0],  # thin_roller_3_2
-                [1, 0, 0],  # thin_roller_3_3
-                [1, 0, 0],  # thin_roller_3_4
-                [1, 0, 0],  # thin_roller_3_5
-                [1, 0, 0],  # thin_roller_3_6
+                [0, 0, 1],  # neck
+                [0, 0, 1],  # head
+                # [0, 0, 1],  # axle_1
+                # [1, 0, 0],  # fat_roller_1_1
+                # [1, 0, 0],  # fat_roller_1_2
+                # [1, 0, 0],  # fat_roller_1_3
+                # [1, 0, 0],  # fat_roller_1_4
+                # [1, 0, 0],  # fat_roller_1_5
+                # [1, 0, 0],  # fat_roller_1_6
+                # [1, 0, 0],  # thin_roller_1_1
+                # [1, 0, 0],  # thin_roller_1_2
+                # [1, 0, 0],  # thin_roller_1_3
+                # [1, 0, 0],  # thin_roller_1_4
+                # [1, 0, 0],  # thin_roller_1_5
+                # [1, 0, 0],  # thin_roller_1_6
+                # [0, 0, 1],  # axle_2
+                # [1, 0, 0],  # fat_roller_2_1
+                # [1, 0, 0],  # fat_roller_2_2
+                # [1, 0, 0],  # fat_roller_2_3
+                # [1, 0, 0],  # fat_roller_2_4
+                # [1, 0, 0],  # fat_roller_2_5
+                # [1, 0, 0],  # fat_roller_2_6
+                # [1, 0, 0],  # thin_roller_2_1
+                # [1, 0, 0],  # thin_roller_2_2
+                # [1, 0, 0],  # thin_roller_2_3
+                # [1, 0, 0],  # thin_roller_2_4
+                # [1, 0, 0],  # thin_roller_2_5
+                # [1, 0, 0],  # thin_roller_2_6
+                # [0, 0, 1],  # axle_3
+                # [1, 0, 0],  # fat_roller_3_1
+                # [1, 0, 0],  # fat_roller_3_2
+                # [1, 0, 0],  # fat_roller_3_3
+                # [1, 0, 0],  # fat_roller_3_4
+                # [1, 0, 0],  # fat_roller_3_5
+                # [1, 0, 0],  # fat_roller_3_6
+                # [1, 0, 0],  # thin_roller_3_1
+                # [1, 0, 0],  # thin_roller_3_2
+                # [1, 0, 0],  # thin_roller_3_3
+                # [1, 0, 0],  # thin_roller_3_4
+                # [1, 0, 0],  # thin_roller_3_5
+                # [1, 0, 0],  # thin_roller_3_6
             ]
         ]
     ).to(device)
 
-    ballbot_joint_names = [
-        "base_link",
-        "torso_link",
-        "neck_link",
-        "head_link",
-        "right_shoulder_pitch_link",
-        "right_shoulder_roll_link",
-        "right_shoulder_yaw_link",
-        "right_elbow_link",
-        "right_hand_link",
-        "left_shoulder_pitch_link",
-        "left_shoulder_roll_link",
-        "left_shoulder_yaw_link",
-        "left_elbow_link",
-        "left_hand_link",
-        "axle_1_link",
-        "fat_roller_1_1_link",
-        "fat_roller_1_2_link",
-        "fat_roller_1_3_link",
-        "fat_roller_1_4_link",
-        "fat_roller_1_5_link",
-        "fat_roller_1_6_link",
-        "thin_roller_1_1_link",
-        "thin_roller_1_2_link",
-        "thin_roller_1_3_link",
-        "thin_roller_1_4_link",
-        "thin_roller_1_5_link",
-        "thin_roller_1_6_link",
-        "axle_2_link",
-        "fat_roller_2_1_link",
-        "fat_roller_2_2_link",
-        "fat_roller_2_3_link",
-        "fat_roller_2_4_link",
-        "fat_roller_2_5_link",
-        "fat_roller_2_6_link",
-        "thin_roller_2_1_link",
-        "thin_roller_2_2_link",
-        "thin_roller_2_3_link",
-        "thin_roller_2_4_link",
-        "thin_roller_2_5_link",
-        "thin_roller_2_6_link",
-        "axle_3_link",
-        "fat_roller_3_1_link",
-        "fat_roller_3_2_link",
-        "fat_roller_3_3_link",
-        "fat_roller_3_4_link",
-        "fat_roller_3_5_link",
-        "fat_roller_3_6_link",
-        "thin_roller_3_1_link",
-        "thin_roller_3_2_link",
-        "thin_roller_3_3_link",
-        "thin_roller_3_4_link",
-        "thin_roller_3_5_link",
-        "thin_roller_3_6_link",
-        "ball_link",
-    ]
-
-    ballbot_joint_names_augment = copy.deepcopy(ballbot_joint_names)
+    ballbot_fk = Ballbot_Batch(device=device)
+    
+    ballbot_joint_names_augment = copy.deepcopy(ballbot_fk.model_names)
     ballbot_joint_pick = [
         "torso_link",
         "left_shoulder_roll_link",
@@ -181,7 +128,7 @@ if __name__ == "__main__":
         "right_shoulder_roll_link",
         "right_elbow_link",
         "right_hand_link",
-        "head_link",
+        # "head_link",
     ]
     smpl_joint_pick = [
         "Torso",
@@ -191,7 +138,7 @@ if __name__ == "__main__":
         "R_Shoulder",
         "R_Elbow",
         "R_Hand",
-        "Head",
+        # "Head",
     ]
     ballbot_joint_pick_idx = [
         ballbot_joint_names_augment.index(j) for j in ballbot_joint_pick
@@ -215,7 +162,30 @@ if __name__ == "__main__":
     if len(key_name_to_pkls) == 0:
         raise ValueError(f"No motion files found in {amass_root}")
 
-    ballbot_fk = Ballbot_Batch(extend_hand=False, device=device)
+    
+    
+    plt.ion()
+    fig = plt.figure(figsize=(10, 10))
+    ax = fig.add_subplot(111, projection='3d')
+    
+    fig2 = plt.figure(figsize=(10, 10))
+    ax2 = fig2.add_subplot(111)
+
+    def set_axes_equal(ax):
+        x_limits = ax.get_xlim3d()
+        y_limits = ax.get_ylim3d()
+        z_limits = ax.get_zlim3d()
+        x_range = abs(x_limits[1] - x_limits[0])
+        y_range = abs(y_limits[1] - y_limits[0])
+        z_range = abs(z_limits[1] - z_limits[0])
+        max_range = max([x_range, y_range, z_range])
+        x_middle = np.mean(x_limits)
+        y_middle = np.mean(y_limits)
+        z_middle = np.mean(z_limits)
+        ax.set_xlim3d([x_middle - max_range/2, x_middle + max_range/2])
+        ax.set_ylim3d([y_middle - max_range/2, y_middle + max_range/2])
+        ax.set_zlim3d([z_middle - max_range/2, z_middle + max_range/2])
+    
     data_dump = {}
     pbar = tqdm(key_name_to_pkls.keys())
     for data_key in pbar:
@@ -248,7 +218,7 @@ if __name__ == "__main__":
                     None,
                     None,
                 ],
-                54,
+                len(ballbot_joint_names_augment),
                 axis=2,
             ),
             N,
@@ -259,6 +229,7 @@ if __name__ == "__main__":
             * sRot.from_quat([0.5, 0.5, 0.5, 0.5]).inv()
         ).as_rotvec()
         pose_aa_ballbot = torch.from_numpy(pose_aa_ballbot).float().to(device)
+        # print(f"Shape of pose_aa_ballbot: {pose_aa_ballbot.shape}")
         gt_root_rot = (
             torch.from_numpy(
                 (
@@ -270,10 +241,59 @@ if __name__ == "__main__":
             .to(device)
         )
 
-        dof_pos = torch.zeros((1, N, 49, 1)).to(device)
-
+        dof_pos = torch.zeros((1, N, ballbot_rotation_axis.shape[1], 1)).to(device)
+        root_rot = Variable(gt_root_rot, requires_grad=True)
         dof_pos_new = Variable(dof_pos, requires_grad=True)
         optimizer_pose = torch.optim.Adadelta([dof_pos_new], lr=100)
+        
+        fk_return = ballbot_fk.fk_batch(pose_aa_ballbot, root_trans_offset[None,])
+
+        ballbot_xyz = fk_return["global_translation_extend"][:, :, ballbot_joint_pick_idx].detach().cpu().numpy()
+        smpl_xyz = joints[:, smpl_joint_pick_idx].detach().cpu().numpy()
+        
+        n_ballbot = min(len(ballbot_joint_pick), ballbot_xyz.shape[2])
+        n_smpl = min(len(smpl_joint_pick), smpl_xyz.shape[1])
+        smpl_skeleton_edges = [
+            (0, 1),  # Pelvis -> L_Shoulder
+            (1, 2),  # L_Shoulder -> L_Elbow
+            (2, 3),  # L_Elbow -> L_Hand
+            (0, 4),  # Pelvis -> R_Shoulder
+            (4, 5),  # R_Shoulder -> R_Elbow
+            (5, 6),  # R_Elbow -> R_Hand
+        ]
+        ballbot_skeleton_edges = smpl_skeleton_edges
+        
+        ax = fig.add_subplot(111, projection='3d')
+        ballbot_xyz = np.asarray(ballbot_xyz).reshape(-1, 3)
+        smpl_xyz = np.asarray(smpl_xyz).reshape(-1, 3)
+        ax.scatter(ballbot_xyz[:, 0], ballbot_xyz[:, 1], ballbot_xyz[:, 2], c='r', label='Ballbot')
+        ax.scatter(smpl_xyz[:, 0], smpl_xyz[:, 1], smpl_xyz[:, 2], c='b', label='SMPL')
+        for (i, j) in ballbot_skeleton_edges:
+            ax.plot([ballbot_xyz[i, 0], ballbot_xyz[j, 0]],
+                    [ballbot_xyz[i, 1], ballbot_xyz[j, 1]],
+                    [ballbot_xyz[i, 2], ballbot_xyz[j, 2]], c='r')
+        for (i, j) in smpl_skeleton_edges:
+            ax.plot([smpl_xyz[i, 0], smpl_xyz[j, 0]],
+                    [smpl_xyz[i, 1], smpl_xyz[j, 1]],
+                    [smpl_xyz[i, 2], smpl_xyz[j, 2]], c='b')
+        for i in range(n_ballbot):
+            ax.text(ballbot_xyz[i, 0], ballbot_xyz[i, 1], ballbot_xyz[i, 2], ballbot_joint_pick[i], color='r')
+        for i in range(n_smpl):
+            ax.text(smpl_xyz[i, 0], smpl_xyz[i, 1], smpl_xyz[i, 2], smpl_joint_pick[i], color='b')
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        ax.set_title("Ballbot and SMPL Joint Positions")
+        ax.legend()
+        set_axes_equal(ax)
+        plt.draw()
+        plt.pause(0.1)
+        
+        ax2.plot(dof_pos_new.data.squeeze().detach().cpu().numpy())
+        ax2.set_xlabel('Frames')
+        ax2.set_ylabel('Joint Angle (rad)')
+        ax2.set_title("Ballbot Joint Angles")
+        ax2.legend(ballbot_joint_names_augment[2:2 + dof_pos.shape[2]], loc='upper right')
 
         for iteration in range(500):
             verts, joints = smpl_parser_n.get_joints_verts(
@@ -281,18 +301,20 @@ if __name__ == "__main__":
             )
             pose_aa_ballbot_new = torch.cat(
                 [
-                    gt_root_rot[None, :, None],
+                    root_rot[None, :, None],
+                    torch.zeros((1, N, 1, 3)).to(device),
                     ballbot_rotation_axis * dof_pos_new,
-                    torch.zeros((1, N, 2, 3)).to(device),
+                    torch.zeros((1, N, 36, 3)).to(device),
                 ],
                 axis=2,
             ).to(device)
+            # print(f"Shape of pose_aa_ballbot_new: {pose_aa_ballbot_new.shape}")
             fk_return = ballbot_fk.fk_batch(
                 pose_aa_ballbot_new, root_trans_offset[None,]
             )
 
             diff = (
-                fk_return["global_translation"][:, :, ballbot_joint_pick_idx]
+                fk_return["global_translation_extend"][:, :, ballbot_joint_pick_idx]
                 - joints[:, smpl_joint_pick_idx]
             )
             loss_g = diff.norm(dim=-1).mean()
@@ -303,19 +325,64 @@ if __name__ == "__main__":
             optimizer_pose.zero_grad()
             loss.backward()
             optimizer_pose.step()
-
+            
             dof_pos_new.data.clamp_(
-                ballbot_fk.joints_range[:, 0, None], ballbot_fk.joints_range[:, 1, None]
+                ballbot_fk.joints_range[:dof_pos_new.data.shape[2], 0, None], ballbot_fk.joints_range[:dof_pos_new.data.shape[2], 1, None]
             )
+            
+            dof_pos_new.data = gaussian_filter_1d_batch(
+                dof_pos_new.squeeze().transpose(1, 0)[None, ],
+                kernel_size=5,
+                sigma=0.75
+            ).transpose(2, 1)[..., None]
+            
+            if iteration % 50 == 0:
+                ax.cla()
+                ballbot_xyz = fk_return["global_translation_extend"][:, :, ballbot_joint_pick_idx].detach().cpu().numpy()
+                smpl_xyz = joints[:, smpl_joint_pick_idx].detach().cpu().numpy()
+                ballbot_xyz = np.asarray(ballbot_xyz).reshape(-1, 3)
+                smpl_xyz = np.asarray(smpl_xyz).reshape(-1, 3)
+                ax.scatter(ballbot_xyz[:, 0], ballbot_xyz[:, 1], ballbot_xyz[:, 2], c='r', label='Ballbot')
+                ax.scatter(smpl_xyz[:, 0], smpl_xyz[:, 1], smpl_xyz[:, 2], c='b', label='SMPL')
+                for (i, j) in ballbot_skeleton_edges:
+                    ax.plot([ballbot_xyz[i, 0], ballbot_xyz[j, 0]],
+                            [ballbot_xyz[i, 1], ballbot_xyz[j, 1]],
+                            [ballbot_xyz[i, 2], ballbot_xyz[j, 2]], c='r')
+                for (i, j) in smpl_skeleton_edges:
+                    ax.plot([smpl_xyz[i, 0], smpl_xyz[j, 0]],
+                            [smpl_xyz[i, 1], smpl_xyz[j, 1]],
+                            [smpl_xyz[i, 2], smpl_xyz[j, 2]], c='b')
+                for i in range(n_ballbot):
+                    ax.text(ballbot_xyz[i, 0], ballbot_xyz[i, 1], ballbot_xyz[i, 2], ballbot_joint_pick[i], color='r')
+                for i in range(n_smpl):
+                    ax.text(smpl_xyz[i, 0], smpl_xyz[i, 1], smpl_xyz[i, 2], smpl_joint_pick[i], color='b')
+                ax.set_xlabel('X')
+                ax.set_ylabel('Y')
+                ax.set_zlabel('Z')
+                ax.set_title("Ballbot and SMPL Joint Positions")
+                ax.legend()
+                set_axes_equal(ax)
+                plt.draw()
+                plt.pause(0.01)
+                
+                ax2.cla()
+                ax2.plot(dof_pos_new.data.squeeze().detach().cpu().numpy())
+                ax2.set_xlabel('Frames')
+                ax2.set_ylabel('Joint Angle (rad)')
+                ax2.set_title("Ballbot Joint Angles")
+                ax2.legend(ballbot_joint_names_augment[2:2 + dof_pos.shape[2]], loc='upper right')
 
         dof_pos_new.data.clamp_(
-            ballbot_fk.joints_range[:, 0, None], ballbot_fk.joints_range[:, 1, None]
+            ballbot_fk.joints_range[:dof_pos_new.data.shape[2], 0, None], ballbot_fk.joints_range[:dof_pos_new.data.shape[2], 1, None]
         )
         pose_aa_ballbot_new = torch.cat(
             [
                 gt_root_rot[None, :, None],
-                ballbot_rotation_axis * dof_pos_new,
-                torch.zeros((1, N, 2, 3)).to(device),
+                torch.zeros((1, N, 1, 3)).to(device),
+                ballbot_rotation_axis[:, :6] * dof_pos_new[:, :, :6],
+                torch.zeros((1, N, 1, 3)).to(device),
+                ballbot_rotation_axis[:, 6:] * dof_pos_new[:, :, 6:],
+                torch.zeros((1, N, 43, 3)).to(device),
             ],
             axis=2,
         )
@@ -324,7 +391,7 @@ if __name__ == "__main__":
         root_trans_offset_dump = root_trans_offset.clone()
 
         root_trans_offset_dump[..., 2] -= (
-            fk_return.global_translation[..., 2].min().item() - 0.08
+            fk_return.global_translation_extend[..., 2].min().item() - 0.08
         )
 
         data_dump[data_key] = {

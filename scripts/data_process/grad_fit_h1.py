@@ -3,6 +3,8 @@ import os
 import sys
 import pdb
 import os.path as osp
+import copy
+import matplotlib.pyplot as plt
 
 sys.path.append(os.getcwd())
 
@@ -11,6 +13,7 @@ from smpl_sim.poselib.skeleton.skeleton3d import (
     SkeletonMotion,
     SkeletonState,
 )
+from smpl_sim.utils.smoothing_utils import gaussian_filter_1d_batch
 from scipy.spatial.transform import Rotation as sRot
 import numpy as np
 import torch
@@ -157,6 +160,29 @@ if __name__ == "__main__":
         raise ValueError(f"No motion files found in {amass_root}")
 
     h1_fk = Humanoid_Batch(device=device)
+    
+    plt.ion()
+    fig = plt.figure(figsize=(10, 10))
+    ax = fig.add_subplot(111, projection='3d')
+    
+    fig2 = plt.figure(figsize=(10, 10))
+    ax2 = fig2.add_subplot(111)
+
+    def set_axes_equal(ax):
+        x_limits = ax.get_xlim3d()
+        y_limits = ax.get_ylim3d()
+        z_limits = ax.get_zlim3d()
+        x_range = abs(x_limits[1] - x_limits[0])
+        y_range = abs(y_limits[1] - y_limits[0])
+        z_range = abs(z_limits[1] - z_limits[0])
+        max_range = max([x_range, y_range, z_range])
+        x_middle = np.mean(x_limits)
+        y_middle = np.mean(y_limits)
+        z_middle = np.mean(z_limits)
+        ax.set_xlim3d([x_middle - max_range/2, x_middle + max_range/2])
+        ax.set_ylim3d([y_middle - max_range/2, y_middle + max_range/2])
+        ax.set_zlim3d([z_middle - max_range/2, z_middle + max_range/2])
+    
     data_dump = {}
     pbar = tqdm(key_name_to_pkls.keys())
     for data_key in pbar:
@@ -189,7 +215,7 @@ if __name__ == "__main__":
                     None,
                     None,
                 ],
-                22,
+                len(h1_joint_names_augment),
                 axis=2,
             ),
             N,
@@ -200,6 +226,7 @@ if __name__ == "__main__":
             * sRot.from_quat([0.5, 0.5, 0.5, 0.5]).inv()
         ).as_rotvec()
         pose_aa_h1 = torch.from_numpy(pose_aa_h1).float().to(device)
+        # print(f"Shape of pose_aa_h1: {pose_aa_h1.shape}")
         gt_root_rot = (
             torch.from_numpy(
                 (
@@ -211,10 +238,57 @@ if __name__ == "__main__":
             .to(device)
         )
 
-        dof_pos = torch.zeros((1, N, 19, 1)).to(device)
+        dof_pos = torch.zeros((1, N, h1_rotation_axis.shape[1], 1)).to(device)
 
         dof_pos_new = Variable(dof_pos, requires_grad=True)
         optimizer_pose = torch.optim.Adadelta([dof_pos_new], lr=100)
+        
+        fk_return = h1_fk.fk_batch(pose_aa_h1, root_trans_offset[None,])
+        
+        h1_xyz = fk_return["global_translation_extend"][:, :, h1_joint_pick_idx].detach().cpu().numpy()
+        smpl_xyz = joints[:, smpl_joint_pick_idx].detach().cpu().numpy()
+
+        n_h1 = min(len(h1_joint_pick), h1_xyz.shape[2])
+        n_smpl = min(len(smpl_joint_pick), smpl_xyz.shape[1])
+        smpl_skeleton_edges = [
+            (0, 1),   # Pelvis -> L_Knee
+            (1, 2),   # L_Knee -> L_Ankle
+            (0, 3),   # Pelvis -> R_Knee
+            (3, 4),   # R_Knee -> R_Ankle
+            (0, 5),   # Pelvis -> L_Shoulder
+            (5, 6),   # L_Shoulder -> L_Elbow
+            (6, 7),   # L_Elbow -> L_Hand
+            (0, 8),   # Pelvis -> R_Shoulder
+            (8, 9),   # R_Shoulder -> R_Elbow
+            (9, 10),  # R_Elbow -> R_Hand
+        ]
+        h1_skeleton_edges = smpl_skeleton_edges
+        
+        ax = fig.add_subplot(111, projection='3d')
+        h1_xyz = np.asarray(h1_xyz).reshape(-1, 3)
+        smpl_xyz = np.asarray(smpl_xyz).reshape(-1, 3)
+        ax.scatter(h1_xyz[:,0], h1_xyz[:,1], h1_xyz[:,2], c='r', label='h1')
+        ax.scatter(smpl_xyz[:,0], smpl_xyz[:,1], smpl_xyz[:,2], c='b', label='SMPL')
+        for (i, j) in h1_skeleton_edges:
+            ax.plot([h1_xyz[i,0], h1_xyz[j,0]],
+                    [h1_xyz[i,1], h1_xyz[j,1]],
+                    [h1_xyz[i,2], h1_xyz[j,2]], c='r')
+        for (i, j) in smpl_skeleton_edges:
+            ax.plot([smpl_xyz[i,0], smpl_xyz[j,0]],
+                    [smpl_xyz[i,1], smpl_xyz[j,1]],
+                    [smpl_xyz[i,2], smpl_xyz[j,2]], c='b')
+        for i in range(n_h1):
+            ax.text(h1_xyz[i,0], h1_xyz[i,1], h1_xyz[i,2], h1_joint_pick[i], color='r')
+        for i in range(n_smpl):
+            ax.text(smpl_xyz[i,0], smpl_xyz[i,1], smpl_xyz[i,2], smpl_joint_pick[i], color='b')
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        ax.set_title('H1 and SMPL Joint Positions')
+        ax.legend()
+        set_axes_equal(ax)
+        plt.draw()
+        plt.pause(0.1)
 
         for iteration in range(500):
             verts, joints = smpl_parser_n.get_joints_verts(
@@ -228,6 +302,7 @@ if __name__ == "__main__":
                 ],
                 axis=2,
             ).to(device)
+            # print(f"Shape of pose_aa_h1_new: {pose_aa_h1_new.shape}")
             fk_return = h1_fk.fk_batch(pose_aa_h1_new, root_trans_offset[None,])
 
             diff = (
@@ -246,6 +321,49 @@ if __name__ == "__main__":
             dof_pos_new.data.clamp_(
                 h1_fk.joints_range[:, 0, None], h1_fk.joints_range[:, 1, None]
             )
+            
+            dof_pos_new.data = gaussian_filter_1d_batch(
+                dof_pos_new.squeeze().transpose(1, 0)[None, ],
+                kernel_size=5,
+                sigma=0.75
+            ).transpose(2, 1)[..., None]
+            
+            if iteration % 50 == 0:
+                ax.cla()
+                h1_xyz = fk_return["global_translation_extend"][:, :, h1_joint_pick_idx].detach().cpu().numpy()
+                smpl_xyz = joints[:, smpl_joint_pick_idx].detach().cpu().numpy()
+                h1_xyz = np.asarray(h1_xyz).reshape(-1, 3)
+                smpl_xyz = np.asarray(smpl_xyz).reshape(-1, 3)
+                ax.scatter(h1_xyz[:,0], h1_xyz[:,1], h1_xyz[:,2], c='r', label='h1')
+                ax.scatter(smpl_xyz[:,0], smpl_xyz[:,1], smpl_xyz[:,2], c='b', label='SMPL')
+                for (i, j) in h1_skeleton_edges:
+                    ax.plot([h1_xyz[i,0], h1_xyz[j,0]],
+                            [h1_xyz[i,1], h1_xyz[j,1]],
+                            [h1_xyz[i,2], h1_xyz[j,2]], c='r')
+                for (i, j) in smpl_skeleton_edges:
+                    ax.plot([smpl_xyz[i,0], smpl_xyz[j,0]],
+                            [smpl_xyz[i,1], smpl_xyz[j,1]],
+                            [smpl_xyz[i,2], smpl_xyz[j,2]], c='b')
+                for i in range(n_h1):
+                    ax.text(h1_xyz[i,0], h1_xyz[i,1], h1_xyz[i,2], h1_joint_pick[i], color='r')
+                for i in range(n_smpl):
+                    ax.text(smpl_xyz[i,0], smpl_xyz[i,1], smpl_xyz[i,2], smpl_joint_pick[i], color='b')
+                ax.legend()
+                ax.set_xlabel('X')
+                ax.set_ylabel('Y')
+                ax.set_zlabel('Z')
+                ax.set_title('H1 and SMPL Joint Positions')
+                ax.legend()
+                set_axes_equal(ax)
+                plt.draw()
+                plt.pause(0.01)
+                
+                ax2.cla()
+                ax2.plot(dof_pos_new.data.squeeze().detach().cpu().numpy())
+                ax2.set_xlabel('Joint Index')
+                ax2.set_ylabel('Joint Angle (rad)')
+                ax2.set_title("Ballbot Joint Angles")
+
 
         dof_pos_new.data.clamp_(
             h1_fk.joints_range[:, 0, None], h1_fk.joints_range[:, 1, None]

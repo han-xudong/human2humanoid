@@ -42,12 +42,12 @@ from smpl_sim.smpllib.smpl_joint_names import (
 from phc.utils.torch_ballbot_batch import Ballbot_Batch, BALLBOT_ROTATION_AXIS
 
 
-ballbot_fk = Ballbot_Batch(extend_hand=False)  # load forward kinematics model
+ballbot_fk = Ballbot_Batch()  # load forward kinematics model
 
 #### Define correspondences between ballbot and smpl joints
 ballbot_joint_names_augment = copy.deepcopy(ballbot_fk.model_names)
 ballbot_joint_pick = [
-    "torso_link",
+    "base_link",
     "left_shoulder_roll_link",
     "left_elbow_link",
     "left_hand_link",
@@ -57,7 +57,7 @@ ballbot_joint_pick = [
     "head_link",
 ]
 smpl_joint_pick = [
-    "Torso",
+    "Pelvis",
     "L_Shoulder",
     "L_Elbow",
     "L_Hand",
@@ -80,7 +80,7 @@ pose_aa_ballbot = torch.cat(
     [
         torch.zeros((1, 2, 3)),
         BALLBOT_ROTATION_AXIS * dof_pos[..., None],
-        torch.zeros((1, 3, 3)),
+        torch.zeros((1, 2, 3)),
     ],
     axis=1,
 )
@@ -118,22 +118,37 @@ shape_new = Variable(torch.zeros([1, 10]).to(device), requires_grad=True)
 scale = Variable(torch.ones([1]).to(device), requires_grad=True)
 optimizer_shape = torch.optim.Adam([shape_new, scale], lr=0.1)
 
-ballbot_xyz = fk_return.global_translation[:, :, ballbot_joint_pick_idx].detach().cpu().numpy()
+ballbot_xyz = fk_return.global_translation_extend[:, :, ballbot_joint_pick_idx].detach().cpu().numpy()
 smpl_xyz = joints[:, smpl_joint_pick_idx].detach().cpu().numpy()
 
 n_ballbot = min(len(ballbot_joint_pick), ballbot_xyz.shape[2])
 n_smpl = min(len(smpl_joint_pick), smpl_xyz.shape[1])
 smpl_skeleton_edges = [
-    (0, 1),  # Torso -> L_Shoulder
+    (0, 1),  # Pelvis -> L_Shoulder
     (1, 2),  # L_Shoulder -> L_Elbow
     (2, 3),  # L_Elbow -> L_Hand
-    (0, 4),  # Torso -> R_Shoulder
+    (0, 4),  # Pelvis -> R_Shoulder
     (4, 5),  # R_Shoulder -> R_Elbow
     (5, 6),  # R_Elbow -> R_Hand
-    (0, 7),  # Torso -> Head
+    (0, 7),  # Pelvis -> Head
 ]
 ballbot_skeleton_edges = smpl_skeleton_edges
 
+def set_axes_equal(ax):
+    x_limits = ax.get_xlim3d()
+    y_limits = ax.get_ylim3d()
+    z_limits = ax.get_zlim3d()
+    x_range = abs(x_limits[1] - x_limits[0])
+    y_range = abs(y_limits[1] - y_limits[0])
+    z_range = abs(z_limits[1] - z_limits[0])
+    max_range = max([x_range, y_range, z_range])
+    x_middle = np.mean(x_limits)
+    y_middle = np.mean(y_limits)
+    z_middle = np.mean(z_limits)
+    ax.set_xlim3d([x_middle - max_range/2, x_middle + max_range/2])
+    ax.set_ylim3d([y_middle - max_range/2, y_middle + max_range/2])
+    ax.set_zlim3d([z_middle - max_range/2, z_middle + max_range/2])
+        
 plt.ion()
 fig = plt.figure(figsize=(10, 10))
 ax = fig.add_subplot(111, projection='3d')
@@ -158,6 +173,7 @@ ax.set_xlabel('X')
 ax.set_ylabel('Y')
 ax.set_zlabel('Z')
 ax.set_title('Ballbot and SMPL Joint Positions')
+set_axes_equal(ax)
 plt.draw()
 plt.pause(0.1)
 
@@ -166,7 +182,7 @@ for iteration in range(1500):
     root_pos = joints[:, 0]
     joints = (joints - joints[:, 0]) * scale + root_pos
     diff = (
-        fk_return.global_translation[:, :, ballbot_joint_pick_idx]
+        fk_return.global_translation_extend[:, :, ballbot_joint_pick_idx]
         - joints[:, smpl_joint_pick_idx]
     )
     loss_g = diff.norm(dim=-1).mean()
@@ -175,7 +191,7 @@ for iteration in range(1500):
         print(iteration, loss.item() * 1000)
         
         ax.cla()
-        ballbot_xyz = fk_return.global_translation[:, :, ballbot_joint_pick_idx].detach().cpu().numpy()
+        ballbot_xyz = fk_return.global_translation_extend[:, :, ballbot_joint_pick_idx].detach().cpu().numpy()
         smpl_xyz = joints[:, smpl_joint_pick_idx].detach().cpu().numpy()
         ballbot_xyz = np.asarray(ballbot_xyz).reshape(-1, 3)
         smpl_xyz = np.asarray(smpl_xyz).reshape(-1, 3)
@@ -198,6 +214,7 @@ for iteration in range(1500):
         ax.set_ylabel('Y')
         ax.set_zlabel('Z')
         ax.set_title('Ballbot and SMPL Joint Positions')
+        set_axes_equal(ax)
         plt.draw()
         plt.pause(0.01)
 
@@ -216,7 +233,7 @@ print(f"shape: {shape_new.detach().cpu().numpy()}, scale: {scale.detach().cpu().
 
 plt.ioff()
 ax.cla()
-ballbot_xyz = fk_return.global_translation[:, :, ballbot_joint_pick_idx].detach().cpu().numpy()
+ballbot_xyz = fk_return.global_translation_extend[:, :, ballbot_joint_pick_idx].detach().cpu().numpy()
 smpl_xyz = joints[:, smpl_joint_pick_idx].detach().cpu().numpy()
 ballbot_xyz = np.asarray(ballbot_xyz).reshape(-1, 3)
 smpl_xyz = np.asarray(smpl_xyz).reshape(-1, 3)
@@ -239,5 +256,6 @@ ax.set_xlabel('X')
 ax.set_ylabel('Y')
 ax.set_zlabel('Z')
 ax.set_title('Ballbot and SMPL Joint Positions')
+set_axes_equal(ax)
 plt.draw()
 plt.show()

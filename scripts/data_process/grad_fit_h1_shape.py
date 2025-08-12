@@ -123,6 +123,7 @@ beta = torch.zeros([1, 10])
 verts, joints = smpl_parser_n.get_joints_verts(pose_aa_stand, beta, trans)
 offset = joints[:, 0] - trans
 root_trans_offset = trans + offset
+print("root_trans_offset:", root_trans_offset)
 
 fk_return = h1_fk.fk_batch(pose_aa_h1[None,], root_trans_offset[None, 0:1])
 
@@ -152,6 +153,21 @@ smpl_skeleton_edges = [
 ]
 h1_skeleton_edges = smpl_skeleton_edges
 
+def set_axes_equal(ax):
+    x_limits = ax.get_xlim3d()
+    y_limits = ax.get_ylim3d()
+    z_limits = ax.get_zlim3d()
+    x_range = abs(x_limits[1] - x_limits[0])
+    y_range = abs(y_limits[1] - y_limits[0])
+    z_range = abs(z_limits[1] - z_limits[0])
+    max_range = max([x_range, y_range, z_range])
+    x_middle = np.mean(x_limits)
+    y_middle = np.mean(y_limits)
+    z_middle = np.mean(z_limits)
+    ax.set_xlim3d([x_middle - max_range/2, x_middle + max_range/2])
+    ax.set_ylim3d([y_middle - max_range/2, y_middle + max_range/2])
+    ax.set_zlim3d([z_middle - max_range/2, z_middle + max_range/2])
+
 plt.ion()
 fig = plt.figure(figsize=(10, 10))
 ax = fig.add_subplot(111, projection='3d')
@@ -176,6 +192,7 @@ ax.set_ylabel('Y')
 ax.set_zlabel('Z')
 ax.set_title('H1 and SMPL Joint Positions')
 ax.legend()
+set_axes_equal(ax)
 plt.draw()
 plt.pause(0.1)
 
@@ -216,6 +233,7 @@ for iteration in range(1000):
         ax.set_ylabel('Y')
         ax.set_zlabel('Z')
         ax.set_title('H1 and SMPL Joint Positions')
+        set_axes_equal(ax)
         plt.draw()
         plt.pause(0.01)
 
@@ -258,5 +276,6 @@ ax.set_xlabel('X')
 ax.set_ylabel('Y')
 ax.set_zlabel('Z')
 ax.set_title('H1 and SMPL Joint Positions')
+set_axes_equal(ax)
 plt.draw()
 plt.show()
