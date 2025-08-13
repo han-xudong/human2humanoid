@@ -25,6 +25,7 @@ from phc.smpllib.smpl_parser import (
 )
 import joblib
 from phc.utils.rotation_conversions import axis_angle_to_matrix
+from phc.utils.torch_utils import calc_heading_quat
 from phc.utils.torch_h1_humanoid_batch import Humanoid_Batch
 from torch.autograd import Variable
 from tqdm import tqdm
@@ -57,7 +58,7 @@ def load_amass_data(data_path):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--amass_root", type=str, default="data/AMASS/stable_punch"
+        "--amass_root", type=str, default="data/AMASS/test"
     )
     args = parser.parse_args()
 
@@ -202,10 +203,16 @@ if __name__ == "__main__":
             .to(device)
         )
 
-        verts, joints = smpl_parser_n.get_joints_verts(
-            pose_aa_walk, torch.zeros((1, 10)).to(device), trans
-        )
+        with torch.no_grad():
+            verts, joints = smpl_parser_n.get_joints_verts(
+                pose_aa_walk, torch.zeros((1, 10)).to(device), trans
+            )
+            root_pos = joints[:, 0:1]
+            joints = (joints - joints[:, 0:1]) * scale.detach() + root_pos
+        
+        joints[..., 2] -= verts[0, :, 2].min().item()
         offset = joints[:, 0] - trans
+        
         root_trans_offset = trans + offset
 
         pose_aa_h1 = np.repeat(
@@ -227,19 +234,11 @@ if __name__ == "__main__":
         ).as_rotvec()
         pose_aa_h1 = torch.from_numpy(pose_aa_h1).float().to(device)
         # print(f"Shape of pose_aa_h1: {pose_aa_h1.shape}")
-        gt_root_rot = (
-            torch.from_numpy(
-                (
-                    sRot.from_rotvec(pose_aa_walk.cpu().numpy()[:, :3])
-                    * sRot.from_quat([0.5, 0.5, 0.5, 0.5]).inv()
-                ).as_rotvec()
-            )
-            .float()
-            .to(device)
-        )
+        gt_root_rot_quat = torch.from_numpy((sRot.from_rotvec(pose_aa_walk[:, :3]) * sRot.from_quat([0.5, 0.5, 0.5, 0.5]).inv()).as_quat()).float() # can't directly use this 
+        gt_root_rot = torch.from_numpy(sRot.from_quat(calc_heading_quat(gt_root_rot_quat)).as_rotvec()).float() # so only use the heading. 
 
         dof_pos = torch.zeros((1, N, h1_rotation_axis.shape[1], 1)).to(device)
-
+        root_rot = Variable(gt_root_rot, requires_grad=True)
         dof_pos_new = Variable(dof_pos, requires_grad=True)
         optimizer_pose = torch.optim.Adadelta([dof_pos_new], lr=100)
         
@@ -296,7 +295,7 @@ if __name__ == "__main__":
             )
             pose_aa_h1_new = torch.cat(
                 [
-                    gt_root_rot[None, :, None],
+                    root_rot[None, :, None],
                     h1_rotation_axis * dof_pos_new,
                     torch.zeros((1, N, 2, 3)).to(device),
                 ],
@@ -370,7 +369,7 @@ if __name__ == "__main__":
         )
         pose_aa_h1_new = torch.cat(
             [
-                gt_root_rot[None, :, None],
+                root_rot[None, :, None],
                 h1_rotation_axis * dof_pos_new,
                 torch.zeros((1, N, 2, 3)).to(device),
             ],

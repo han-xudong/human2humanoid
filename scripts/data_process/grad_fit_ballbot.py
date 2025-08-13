@@ -25,6 +25,7 @@ from phc.smpllib.smpl_parser import (
 )
 import joblib
 from phc.utils.rotation_conversions import axis_angle_to_matrix
+from phc.utils.torch_utils import calc_heading_quat
 from phc.utils.torch_ballbot_batch import Ballbot_Batch
 from torch.autograd import Variable
 from tqdm import tqdm
@@ -56,7 +57,7 @@ def load_amass_data(data_path):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--amass_root", type=str, default="data/AMASS/stable_punch")
+    parser.add_argument("--amass_root", type=str, default="data/AMASS/test")
     args = parser.parse_args()
 
     device = torch.device("cpu")
@@ -162,9 +163,6 @@ if __name__ == "__main__":
     if len(key_name_to_pkls) == 0:
         raise ValueError(f"No motion files found in {amass_root}")
 
-    
-    
-    plt.ion()
     fig = plt.figure(figsize=(10, 10))
     ax = fig.add_subplot(111, projection='3d')
     
@@ -205,12 +203,22 @@ if __name__ == "__main__":
             .to(device)
         )
 
-        verts, joints = smpl_parser_n.get_joints_verts(
-            pose_aa_walk, torch.zeros((1, 10)).to(device), trans
-        )
+        with torch.no_grad():
+            verts, joints = smpl_parser_n.get_joints_verts(
+                pose_aa_walk, shape_new, trans
+            )
+            root_pos = joints[:, 0:1]
+            joints = (joints - joints[:, 0:1]) * scale.detach() + root_pos
+        
+        joints[..., 2] -= verts[0, :, 2].min().item()
         offset = joints[:, 0] - trans
-        root_trans_offset = trans + offset
-
+        
+        root_trans_offset = (trans + offset).clone()
+        root_pos_offset = torch.zeros(1, 3)
+        root_pos_offset[:, 2] = -0.3  # Set a fixed z-offset for the root position
+        root_trans_offset += root_pos_offset
+        # root_trans_offset[:, 2] = -0.001  # Set a fixed z-offset for the root translation
+        print(f"root_trans_offset:", root_trans_offset[None, ])
         pose_aa_ballbot = np.repeat(
             np.repeat(
                 sRot.identity().as_rotvec()[
@@ -230,23 +238,16 @@ if __name__ == "__main__":
         ).as_rotvec()
         pose_aa_ballbot = torch.from_numpy(pose_aa_ballbot).float().to(device)
         # print(f"Shape of pose_aa_ballbot: {pose_aa_ballbot.shape}")
-        gt_root_rot = (
-            torch.from_numpy(
-                (
-                    sRot.from_rotvec(pose_aa_walk.cpu().numpy()[:, :3])
-                    * sRot.from_quat([0.5, 0.5, 0.5, 0.5]).inv()
-                ).as_rotvec()
-            )
-            .float()
-            .to(device)
-        )
+        gt_root_rot_quat = torch.from_numpy((sRot.from_rotvec(pose_aa_walk[:, :3]) * sRot.from_quat([0.5, 0.5, 0.5, 0.5]).inv()).as_quat()).float() # can't directly use this 
+        gt_root_rot = torch.from_numpy(sRot.from_quat(calc_heading_quat(gt_root_rot_quat)).as_rotvec()).float() # so only use the heading. 
 
         dof_pos = torch.zeros((1, N, ballbot_rotation_axis.shape[1], 1)).to(device)
-        root_rot = Variable(gt_root_rot, requires_grad=True)
+        root_rot = Variable(gt_root_rot.clone(), requires_grad=True)
         dof_pos_new = Variable(dof_pos, requires_grad=True)
         optimizer_pose = torch.optim.Adadelta([dof_pos_new], lr=100)
         
         fk_return = ballbot_fk.fk_batch(pose_aa_ballbot, root_trans_offset[None,])
+        
 
         ballbot_xyz = fk_return["global_translation_extend"][:, :, ballbot_joint_pick_idx].detach().cpu().numpy()
         smpl_xyz = joints[:, smpl_joint_pick_idx].detach().cpu().numpy()
@@ -263,6 +264,7 @@ if __name__ == "__main__":
         ]
         ballbot_skeleton_edges = smpl_skeleton_edges
         
+        plt.ion()
         ax = fig.add_subplot(111, projection='3d')
         ballbot_xyz = np.asarray(ballbot_xyz).reshape(-1, 3)
         smpl_xyz = np.asarray(smpl_xyz).reshape(-1, 3)
@@ -377,22 +379,25 @@ if __name__ == "__main__":
         )
         pose_aa_ballbot_new = torch.cat(
             [
-                gt_root_rot[None, :, None],
+                root_rot[None, :, None],
                 torch.zeros((1, N, 1, 3)).to(device),
-                ballbot_rotation_axis[:, :6] * dof_pos_new[:, :, :6],
-                torch.zeros((1, N, 1, 3)).to(device),
-                ballbot_rotation_axis[:, 6:] * dof_pos_new[:, :, 6:],
-                torch.zeros((1, N, 43, 3)).to(device),
+                ballbot_rotation_axis * dof_pos_new,
+                torch.zeros((1, N, 36, 3)).to(device),
             ],
             axis=2,
         )
         fk_return = ballbot_fk.fk_batch(pose_aa_ballbot_new, root_trans_offset[None,])
 
-        root_trans_offset_dump = root_trans_offset.clone()
+        height_diff = fk_return.global_translation[..., 2].min().item() 
+        
+        root_trans_offset_dump = (root_trans_offset + root_pos_offset).clone()
 
-        root_trans_offset_dump[..., 2] -= (
-            fk_return.global_translation_extend[..., 2].min().item() - 0.08
-        )
+        root_trans_offset_dump[..., 2] -= height_diff
+        joints_dump = joints.numpy().copy()
+        joints_dump[..., 2] -= height_diff
+        # root_trans_offset_dump[..., 2] -= (
+        #     fk_return.global_translation_extend[..., 2].min().item() - 0.012
+        # )
 
         data_dump[data_key] = {
             "root_trans_offset": root_trans_offset_dump.squeeze()
@@ -401,9 +406,36 @@ if __name__ == "__main__":
             .numpy(),
             "pose_aa": pose_aa_ballbot_new.squeeze().cpu().detach().numpy(),
             "dof": dof_pos_new.squeeze().detach().cpu().numpy(),
-            "root_rot": sRot.from_rotvec(gt_root_rot.cpu().numpy()).as_quat(),
+            "root_rot": sRot.from_rotvec(root_rot.detach().cpu().numpy()).as_quat(),
             "fps": 30,
         }
+        
+        plt.ioff()
+        ax.cla()
+        ballbot_xyz = np.asarray(ballbot_xyz).reshape(-1, 3)
+        smpl_xyz = np.asarray(smpl_xyz).reshape(-1, 3)
+        ax.scatter(ballbot_xyz[:, 0], ballbot_xyz[:, 1], ballbot_xyz[:, 2], c='r', label='Ballbot')
+        ax.scatter(smpl_xyz[:, 0], smpl_xyz[:, 1], smpl_xyz[:, 2], c='b', label='SMPL')
+        for (i, j) in ballbot_skeleton_edges:
+            ax.plot([ballbot_xyz[i, 0], ballbot_xyz[j, 0]],
+                    [ballbot_xyz[i, 1], ballbot_xyz[j, 1]],
+                    [ballbot_xyz[i, 2], ballbot_xyz[j, 2]], c='r')
+        for (i, j) in smpl_skeleton_edges:
+            ax.plot([smpl_xyz[i, 0], smpl_xyz[j, 0]],
+                    [smpl_xyz[i, 1], smpl_xyz[j, 1]],
+                    [smpl_xyz[i, 2], smpl_xyz[j, 2]], c='b')
+        for i in range(n_ballbot):
+            ax.text(ballbot_xyz[i, 0], ballbot_xyz[i, 1], ballbot_xyz[i, 2], ballbot_joint_pick[i], color='r')
+        for i in range(n_smpl):
+            ax.text(smpl_xyz[i, 0], smpl_xyz[i, 1], smpl_xyz[i, 2], smpl_joint_pick[i], color='b')
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        ax.set_title("Ballbot and SMPL Joint Positions")
+        ax.legend()
+        set_axes_equal(ax)
+        plt.draw()
+        plt.show()
 
     #     print(f"dumping {data_key} for testing, remove the line if you want to process all data")
     #     import ipdb; ipdb.set_trace()

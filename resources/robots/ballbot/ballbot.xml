@@ -61,10 +61,10 @@
 
     <worldbody>
         <light directional="true" pos="-0.5 0.5 3" dir="0 0 -1" />
-        <geom name="floor" type="plane" pos="0 0 0" size="5 5 0.1" material="floor_mat"
+        <geom name="floor" type="plane" pos="0 0 -0.12" size="5 5 0.1" material="floor_mat"
             rgba="1 1 1 1" contype="7" conaffinity="7" />
         
-        <body name="base_link" pos="0.0 0.0 0.12" euler="0.0 -0.0 0.0">
+        <body name="base_link" pos="0.0 0.0 0.0" euler="0.0 -0.0 0.0">
             <joint name="floating_base_joint" type="free" />
             <geom class="visual" name="base_geom" type="mesh" mesh="base_link" pos="0 0 0" euler="0 0 0" />
             <inertial mass="4.8833491952093615"
@@ -624,7 +624,7 @@
         <motor name="wheel_1" joint="wheel_base_1_joint" gear="3" forcerange="-17 17" />
         <motor name="wheel_2" joint="wheel_base_2_joint" gear="3" forcerange="-17 17" />
         <motor name="wheel_3" joint="wheel_base_3_joint" gear="3" forcerange="-17 17" />
-
+<!-- 
         <position class="torso" name="neck" joint="neck_joint" ctrlrange="-3.14 3.14"
             forcerange="-17 17" />
         <position class="torso" name="head" joint="head_joint" ctrlrange="-0.2 0.5"
@@ -646,7 +646,7 @@
         <position class="torso" name="left_shoulder_yaw" joint="left_shoulder_yaw_joint"
             ctrlrange="-3.14 3.14" forcerange="-17 17" />
         <position class="torso" name="left_elbow" joint="left_elbow_joint" ctrlrange="-2.1 2.1"
-            forcerange="-17 17" />
+            forcerange="-17 17" /> -->
     </actuator>
 
     <sensor>

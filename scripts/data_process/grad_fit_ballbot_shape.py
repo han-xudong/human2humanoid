@@ -47,7 +47,7 @@ ballbot_fk = Ballbot_Batch()  # load forward kinematics model
 #### Define correspondences between ballbot and smpl joints
 ballbot_joint_names_augment = copy.deepcopy(ballbot_fk.model_names)
 ballbot_joint_pick = [
-    "base_link",
+    "torso_link",
     "left_shoulder_roll_link",
     "left_elbow_link",
     "left_hand_link",
@@ -57,7 +57,7 @@ ballbot_joint_pick = [
     "head_link",
 ]
 smpl_joint_pick = [
-    "Pelvis",
+    "Torso",
     "L_Shoulder",
     "L_Elbow",
     "L_Hand",
@@ -109,6 +109,9 @@ beta = torch.zeros([1, 10])
 verts, joints = smpl_parser_n.get_joints_verts(pose_aa_stand, beta, trans)
 offset = joints[:, 0] - trans
 root_trans_offset = trans + offset
+root_trans_offset[:, 2] = -0.3
+
+print("root_trans_offset:", root_trans_offset[None, 0:1])
 
 print(f"SMPL root trans offset: {root_trans_offset}")
 

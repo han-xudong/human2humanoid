@@ -56,7 +56,7 @@ asset_descriptors = [
 ]
 sk_tree = SkeletonTree.from_mjcf(robot_xml)
 
-motion_file = f"data/{robot}/stable_punch.pkl"
+motion_file = f"data/{robot}/test.pkl"
 # motion_file = "legged_gym/resources/motions/h1/amass_phc_filtered.pkl"
 if os.path.exists(motion_file):
     print(f"loading {motion_file}")
@@ -356,7 +356,7 @@ while not gym.query_viewer_has_closed(viewer):
     # dof_states['pos'] = dof_pos
     # speed = speeds[current_dof]
     dof_state = torch.stack([dof_pos[..., :num_dofs], torch.zeros_like(dof_pos[..., :num_dofs])], dim=-1).squeeze().repeat(num_envs, 1)
-    print("Dof state shape:", dof_state.shape, "Dof state:", dof_state[:10, 0])
+    # print("Dof state shape:", dof_state.shape, "Dof state:", dof_state[:10, 0])
     gym.set_dof_state_tensor_indexed(sim, gymtorch.unwrap_tensor(dof_state), gymtorch.unwrap_tensor(env_ids), len(env_ids))
 
     gym.simulate(sim)
